@@ -14,11 +14,18 @@ type PromptConfig struct {
 	ConversationLevels map[string]LevelConfig `yaml:"conversation_levels"`
 }
 
+type LLMSettings struct {
+	Model       string  `yaml:"model"`
+	Temperature float64 `yaml:"temperature"`
+	MaxTokens   int     `yaml:"max_tokens"`
+}
+
 type LevelConfig struct {
-	Role           string `yaml:"role"`
-	Personality    string `yaml:"personality"`
-	Starter        string `yaml:"starter"`
-	Conversational string `yaml:"conversational"`
+	Role           string      `yaml:"role"`
+	Personality    string      `yaml:"personality"`
+	Starter        string      `yaml:"starter"`
+	Conversational string      `yaml:"conversational"`
+	LLM            LLMSettings `yaml:"llm"`
 }
 
 func loadPromptsConfig(path string) (*PromptConfig, error) {
@@ -67,6 +74,39 @@ func GetFullPrompt(path string, level string, promptType string) (string, string
 		levelConfig.Role, levelConfig.Personality, content)
 
 	return levelConfig.Role, levelConfig.Personality, fullPrompt, nil
+}
+
+func GetLLMSettingsFromLevel(path string, level string) (string, float64, int) {
+	if _, exists := imMemCache[path]; !exists {
+		prompts, err := loadPromptsConfig(path)
+		if err != nil {
+			return "openai/gpt-4o-mini", 0.7, 1000
+		}
+		imMemCache[path] = *prompts
+	}
+
+	levelConfig, exists := imMemCache[path].ConversationLevels[level]
+	if !exists {
+		return "openai/gpt-4o-mini", 0.7, 1000
+	}
+
+	llm := levelConfig.LLM
+	model := llm.Model
+	if model == "" {
+		model = "openai/gpt-4o-mini"
+	}
+
+	temperature := llm.Temperature
+	if temperature == 0 {
+		temperature = 0.7
+	}
+
+	maxTokens := llm.MaxTokens
+	if maxTokens == 0 {
+		maxTokens = 1000
+	}
+
+	return model, temperature, maxTokens
 }
 
 func GetPromptsDir() string {

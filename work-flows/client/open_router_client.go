@@ -29,14 +29,14 @@ func NewOpenRouterClient(apiKey string) *openRouterClient {
 	}
 }
 
-func (oc *openRouterClient) ChatCompletionStream(model string, messages []models.Message, streamResponse chan<- models.StreamResponse, done chan<- bool) {
+func (oc *openRouterClient) ChatCompletionStream(model string, temperature float64, maxTokens int, messages []models.Message, streamResponse chan<- models.StreamResponse, done chan<- bool) {
 	defer func() { done <- true }()
 
 	reqBody := models.ChatRequest{
 		Model:       model,
 		Messages:    messages,
-		Temperature: 0.7,
-		MaxTokens:   1000,
+		Temperature: temperature,
+		MaxTokens:   maxTokens,
 		Stream:      true,
 	}
 

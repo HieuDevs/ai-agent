@@ -2,6 +2,10 @@ conversation_levels:
   beginner:
     role: "Friendly relationship buddy"
     personality: "Patient, encouraging, gentle, cheerful"
+    llm:
+      model: "openai/gpt-4o-mini"
+      temperature: 0.2
+      max_tokens: 200
     starter: |
       Hi! Do you have many friends?
       Let's talk about people you know.
@@ -21,6 +25,10 @@ conversation_levels:
   elementary:
     role: "Supportive social companion"
     personality: "Supportive, motivational, caring, upbeat"
+    llm:
+      model: "openai/gpt-4o-mini"
+      temperature: 0.2
+      max_tokens: 200
     starter: |
       Hello! Who is your best friend?
       Use simple words and basic tenses.
@@ -39,6 +47,10 @@ conversation_levels:
   intermediate:
     role: "Curious social conversationalist"
     personality: "Curious, engaging, open-minded, thoughtful"
+    llm:
+      model: "openai/gpt-4o-mini"
+      temperature: 0.2
+      max_tokens: 200
     starter: |
       Hey! Have you ever made a new friend?
       Use varied vocabulary and grammar.
@@ -57,6 +69,10 @@ conversation_levels:
   upper_intermediate:
     role: "Intellectual relationship discussion partner"
     personality: "Analytical, challenging, insightful, respectful"
+    llm:
+      model: "openai/gpt-4o-mini"
+      temperature: 0.2
+      max_tokens: 200
     starter: |
       Relationships often test our communication skills, don't they?
       Ask about connection and social dynamics.
@@ -75,6 +91,10 @@ conversation_levels:
   advanced:
     role: "Sophisticated social mentor"
     personality: "Wise, challenging, sophisticated, thought-provoking"
+    llm:
+      model: "openai/gpt-4o-mini"
+      temperature: 0.2
+      max_tokens: 200
     starter: |
       You know, relationships reveal profound truths about connection.
       Which relationship experience changed your perspective most?
@@ -93,6 +113,10 @@ conversation_levels:
   fluent:
     role: "Equal relationship conversational partner"
     personality: "Natural, authentic, intellectually stimulating, mature"
+    llm:
+      model: "openai/gpt-4o-mini"
+      temperature: 0.2
+      max_tokens: 200
     starter: |
       I've been reflecting on how relationships shape emotional intelligence.
       Which connection fundamentally altered your understanding of human bonding?

@@ -25,15 +25,27 @@ func getLevelSpecificPrompt(path string, level models.ConversationLevel, promptT
 type ConversationAgent struct {
 	name                string
 	conversationHistory []models.Message
+	model               string
+	temperature         float64
+	maxTokens           int
 	Topic               string
 	client              client.Client
 	level               models.ConversationLevel
 }
 
-func NewConversationAgent(client client.Client, level models.ConversationLevel, topic string) *ConversationAgent {
+func NewConversationAgent(
+	client client.Client,
+	level models.ConversationLevel,
+	topic string,
+) *ConversationAgent {
 	if !models.IsValidConversationLevel(string(level)) {
 		level = models.ConversationLevelIntermediate
 	}
+
+	model, temperature, maxTokens := utils.GetLLMSettingsFromLevel(
+		filepath.Join(utils.GetPromptsDir(), topic+"_prompt.yaml"),
+		string(level),
+	)
 
 	return &ConversationAgent{
 		name:                "ConversationAgent",
@@ -41,6 +53,9 @@ func NewConversationAgent(client client.Client, level models.ConversationLevel, 
 		conversationHistory: []models.Message{},
 		level:               level,
 		Topic:               topic,
+		model:               model,
+		temperature:         temperature,
+		maxTokens:           maxTokens,
 	}
 }
 
@@ -71,13 +86,17 @@ func (ca *ConversationAgent) ProcessTask(task models.JobRequest) *models.JobResp
 	utils.PrintInfo(fmt.Sprintf("ConversationAgent processing task: %s", task.Task))
 
 	if task.UserMessage == "" {
-		return ca.generateConversationStarter()
+		return ca.generateConversationStarter(ca.model, ca.temperature, ca.maxTokens)
 	}
 
-	return ca.generateConversationalResponse(task)
+	return ca.generateConversationalResponse(task, ca.model, ca.temperature, ca.maxTokens)
 }
 
-func (ca *ConversationAgent) generateConversationStarter() *models.JobResponse {
+func (ca *ConversationAgent) generateConversationStarter(
+	model string,
+	temperature float64,
+	maxTokens int,
+) *models.JobResponse {
 	pathPrompts := filepath.Join(utils.GetPromptsDir(), ca.Topic+"_prompt.yaml")
 	levelPrompt := getLevelSpecificPrompt(pathPrompts, ca.level, "starter")
 
@@ -89,7 +108,7 @@ func (ca *ConversationAgent) generateConversationStarter() *models.JobResponse {
 	}
 
 	fmt.Println("🤖 Writing conversation...")
-	response := ca.getStreamingResponse(messages, "")
+	response := ca.getStreamingResponse(messages, "", model, temperature, maxTokens)
 
 	if response == "" {
 		utils.PrintError("Conversation generation failed")
@@ -110,7 +129,12 @@ func (ca *ConversationAgent) generateConversationStarter() *models.JobResponse {
 	}
 }
 
-func (ca *ConversationAgent) generateConversationalResponse(task models.JobRequest) *models.JobResponse {
+func (ca *ConversationAgent) generateConversationalResponse(
+	task models.JobRequest,
+	model string,
+	temperature float64,
+	maxTokens int,
+) *models.JobResponse {
 	conversationLevel := ca.level
 	if task.Level != "" {
 		conversationLevel = task.Level
@@ -136,7 +160,7 @@ func (ca *ConversationAgent) generateConversationalResponse(task models.JobReque
 	})
 
 	fmt.Println("💬 Responding...")
-	response := ca.getStreamingResponse(messages, "")
+	response := ca.getStreamingResponse(messages, "", model, temperature, maxTokens)
 
 	if response == "" {
 		utils.PrintError("Conversational response failed")
@@ -255,13 +279,19 @@ func (ca *ConversationAgent) showVietnameseTranslation(text string) {
 	fmt.Println("──────────────────────────")
 }
 
-func (ca *ConversationAgent) getStreamingResponse(messages []models.Message, prefix string) string {
+func (ca *ConversationAgent) getStreamingResponse(
+	messages []models.Message,
+	prefix string,
+	model string,
+	temperature float64,
+	maxTokens int,
+) string {
 	fmt.Print(prefix)
 
 	streamResponseChan := make(chan models.StreamResponse, 10)
 	done := make(chan bool)
 
-	go ca.client.ChatCompletionStream("openai/gpt-4o-mini", messages, streamResponseChan, done)
+	go ca.client.ChatCompletionStream(model, temperature, maxTokens, messages, streamResponseChan, done)
 
 	var fullResponse strings.Builder
 

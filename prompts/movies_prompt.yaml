@@ -2,6 +2,10 @@ conversation_levels:
   beginner:
     role: "Friendly movie buddy"
     personality: "Excited, patient, encouraging, cheerful"
+    llm:
+      model: "openai/gpt-4o-mini"
+      temperature: 0.2
+      max_tokens: 200
     starter: |
       Hi! Do you watch movies?
       Let's talk about films you like.
@@ -21,6 +25,10 @@ conversation_levels:
   elementary:
     role: "Supportive movie companion"
     personality: "Supportive, motivational, caring, upbeat"
+    llm:
+      model: "openai/gpt-4o-mini"
+      temperature: 0.2
+      max_tokens: 200
     starter: |
       Hello! What movie did you watch?
       Use simple words and basic tenses.
@@ -39,6 +47,10 @@ conversation_levels:
   intermediate:
     role: "Curious film enthusiast"
     personality: "Curious, engaging, open-minded, thoughtful"
+    llm:
+      model: "openai/gpt-4o-mini"
+      temperature: 0.2
+      max_tokens: 200
     starter: |
       Hey! Have you ever discovered a hidden gem?
       Use varied vocabulary and grammar.
@@ -57,6 +69,10 @@ conversation_levels:
   upper_intermediate:
     role: "Intellectual film discussion partner"
     personality: "Analytical, challenging, insightful, respectful"
+    llm:
+      model: "openai/gpt-4o-mini"
+      temperature: 0.2
+      max_tokens: 200
     starter: |
       Movies often mirror our society, don't they?
       Ask about themes and cultural impact.
@@ -75,6 +91,10 @@ conversation_levels:
   advanced:
     role: "Sophisticated cinema mentor"
     personality: "Wise, challenging, sophisticated, thought-provoking"
+    llm:
+      model: "openai/gpt-4o-mini"
+      temperature: 0.2
+      max_tokens: 200
     starter: |
       You know, cinema reveals profound truths about humanity.
       Which film fundamentally changed your worldview?
@@ -93,6 +113,10 @@ conversation_levels:
   fluent:
     role: "Equal cinema conversational partner"
     personality: "Natural, authentic, intellectually stimulating, mature"
+    llm:
+      model: "openai/gpt-4o-mini"
+      temperature: 0.2
+      max_tokens: 200
     starter: |
       I've been reflecting on how films shape cultural consciousness.
       Which cinematic experience fundamentally altered your perspective?

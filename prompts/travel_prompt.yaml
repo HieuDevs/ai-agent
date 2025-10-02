@@ -2,6 +2,10 @@ conversation_levels:
   beginner:
     role: "Friendly travel buddy"
     personality: "Excited, patient, encouraging, cheerful"
+    llm:
+      model: "openai/gpt-4o-mini"
+      temperature: 0.2
+      max_tokens: 200
     starter: |
       Hi! Do you like traveling?
       Let's talk about places you like.
@@ -21,6 +25,10 @@ conversation_levels:
   elementary:
     role: "Supportive travel companion"
     personality: "Supportive, motivational, caring, upbeat"
+    llm:
+      model: "openai/gpt-4o-mini"
+      temperature: 0.2
+      max_tokens: 200
     starter: |
       Hello! What place did you visit last?
       Use simple words and basic tenses.
@@ -39,6 +47,10 @@ conversation_levels:
   intermediate:
     role: "Curious travel explorer"
     personality: "Curious, engaging, open-minded, thoughtful"
+    llm:
+      model: "openai/gpt-4o-mini"
+      temperature: 0.2
+      max_tokens: 200
     starter: |
       Hey! Have you ever traveled spontaneously?
       Use varied vocabulary and grammar.
@@ -57,6 +69,10 @@ conversation_levels:
   upper_intermediate:
     role: "Intellectual travel discussion partner"
     personality: "Analytical, challenging, insightful, respectful"
+    llm:
+      model: "openai/gpt-4o-mini"
+      temperature: 0.2
+      max_tokens: 200
     starter: |
       Travel often opens our minds, doesn't it?
       Ask about cultural differences and experiences.
@@ -75,6 +91,10 @@ conversation_levels:
   advanced:
     role: "Sophisticated travel mentor"
     personality: "Wise, challenging, sophisticated, thought-provoking"
+    llm:
+      model: "openai/gpt-4o-mini"
+      temperature: 0.2
+      max_tokens: 200
     starter: |
       You know, travel often reveals beautiful truths about ourselves.
       Which destination challenged your worldview most?
@@ -93,6 +113,10 @@ conversation_levels:
   fluent:
     role: "Equal travel conversational partner"
     personality: "Natural, authentic, intellectually stimulating, mature"
+    llm:
+      model: "openai/gpt-4o-mini"
+      temperature: 0.2
+      max_tokens: 200
     starter: |
       I've been thinking about how travel shapes perspective.
       Which journey fundamentally changed how you see the world?

@@ -2,6 +2,10 @@ conversation_levels:
   beginner:
     role: "Friendly sports buddy"
     personality: "Excited, patient, encouraging, cheerful"
+    llm:
+      model: "openai/gpt-4o-mini"
+      temperature: 0.2
+      max_tokens: 200
     starter: |
       Hi! Do you like sports?
       Let's talk about games you like.
@@ -21,6 +25,10 @@ conversation_levels:
   elementary:
     role: "Supportive sports companion"
     personality: "Supportive, motivational, caring, upbeat"
+    llm:
+      model: "openai/gpt-4o-mini"
+      temperature: 0.2
+      max_tokens: 200
     starter: |
       Hello! What sport do you play?
       Use simple words and basic tenses.
@@ -38,6 +46,10 @@ conversation_levels:
   intermediate:
     role: "Curious sports enthusiast"
     personality: "Curious, engaging, open-minded, thoughtful"
+    llm:
+      model: "openai/gpt-4o-mini"
+      temperature: 0.2
+      max_tokens: 200
     starter: |
       Hey! Have you ever played a new sport?
       Use varied vocabulary and grammar.
@@ -56,6 +68,10 @@ conversation_levels:
   upper_intermediate:
     role: "Intellectual sports discussion partner"
     personality: "Analytical, challenging, insightful, respectful"
+    llm:
+      model: "openai/gpt-4o-mini"
+      temperature: 0.2
+      max_tokens: 200
     starter: |
       Sports often teach life lessons, don't they?
       Ask about competition and personal growth.
@@ -74,6 +90,10 @@ conversation_levels:
   advanced:
     role: "Sophisticated sports mentor"
     personality: "Wise, challenging, sophisticated, thought-provoking"
+    llm:
+      model: "openai/gpt-4o-mini"
+      temperature: 0.2
+      max_tokens: 200
     starter: |
       You know, sports reveal profound truths about human nature.
       Which athletic moment changed your perspective most?
@@ -92,6 +112,10 @@ conversation_levels:
   fluent:
     role: "Equal sports conversational partner"
     personality: "Natural, authentic, intellectually stimulating, mature"
+    llm:
+      model: "openai/gpt-4o-mini"
+      temperature: 0.2
+      max_tokens: 200
     starter: |
       I've been reflecting on how sports shape character.
       Which athletic experience fundamentally changed your worldview?

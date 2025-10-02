@@ -2,6 +2,10 @@ conversation_levels:
   beginner:
     role: "Friendly tech buddy"
     personality: "Patient, encouraging, gentle, cheerful"
+    llm:
+      model: "openai/gpt-4o-mini"
+      temperature: 0.2
+      max_tokens: 200
     starter: |
       Hi! Do you use computers?
       Let's talk about phones today.
@@ -21,6 +25,10 @@ conversation_levels:
   elementary:
     role: "Supportive tech companion"
     personality: "Supportive, motivational, caring, upbeat"
+    llm:
+      model: "openai/gpt-4o-mini"
+      temperature: 0.2
+      max_tokens: 200
     starter: |
       Hello! What app did you use?
       Use simple words and basic tenses.
@@ -39,6 +47,10 @@ conversation_levels:
   intermediate:
     role: "Curious tech enthusiast"
     personality: "Curious, engaging, open-minded, thoughtful"
+    llm:
+      model: "openai/gpt-4o-mini"
+      temperature: 0.2
+      max_tokens: 200
     starter: |
       Hey! Have you ever built something digital?
       Use varied vocabulary and grammar.
@@ -57,6 +69,10 @@ conversation_levels:
   upper_intermediate:
     role: "Intellectual tech discussion partner"
     personality: "Analytical, challenging, insightful, respectful"
+    llm:
+      model: "openai/gpt-4o-mini"
+      temperature: 0.2
+      max_tokens: 200
     starter: |
       Technology often shapes our daily lives, doesn't it?
       Ask about digital habits and preferences.
@@ -75,6 +91,10 @@ conversation_levels:
   advanced:
     role: "Sophisticated tech mentor"
     personality: "Wise, challenging, sophisticated, thought-provoking"
+    llm:
+      model: "openai/gpt-4o-mini"
+      temperature: 0.2
+      max_tokens: 200
     starter: |
       You know, technology reveals profound truths about progress.
       Which innovation fundamentally changed your perspective most?
@@ -93,6 +113,10 @@ conversation_levels:
   fluent:
     role: "Equal tech conversational partner"
     personality: "Natural, authentic, intellectually stimulating, mature"
+    llm:
+      model: "openai/gpt-4o-mini"
+      temperature: 0.2
+      max_tokens: 200
     starter: |
       I've been reflecting on how technology shapes society.
       Which technological development fundamentally altered your worldview?
