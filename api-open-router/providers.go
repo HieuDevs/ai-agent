@@ -1,4 +1,4 @@
-package tools
+package api_open_router
 
 import (
 	"encoding/json"
@@ -6,20 +6,22 @@ import (
 	"io"
 	"net/http"
 
+	"ai-agent/utils"
+
 	"github.com/fatih/color"
 )
 
 func ListProviders(exportJSON bool) {
 	if openRouterApiKey == "" {
-		printError("OPENROUTER_API_KEY environment variable is required")
+		utils.PrintError("OPENROUTER_API_KEY environment variable is required")
 		return
 	}
 
-	printInfo("Fetching all available providers...")
+	utils.PrintInfo("Fetching all available providers...")
 
 	req, err := http.NewRequest("GET", "https://openrouter.ai/api/v1/providers", nil)
 	if err != nil {
-		printError("Failed to create request: " + err.Error())
+		utils.PrintError("Failed to create request: " + err.Error())
 		return
 	}
 
@@ -27,19 +29,19 @@ func ListProviders(exportJSON bool) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		printError("Failed to make request: " + err.Error())
+		utils.PrintError("Failed to make request: " + err.Error())
 		return
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		printError("Failed to read response body: " + err.Error())
+		utils.PrintError("Failed to read response body: " + err.Error())
 		return
 	}
 
 	if resp.StatusCode == http.StatusOK {
-		printSuccess("Providers list retrieved successfully")
+		utils.PrintSuccess("Providers list retrieved successfully")
 		cyan := color.New(color.FgCyan)
 		cyan.Println("Available providers:")
 		fmt.Println(string(body))
@@ -47,10 +49,10 @@ func ListProviders(exportJSON bool) {
 		if exportJSON {
 			var jsonData any
 			if err := json.Unmarshal(body, &jsonData); err == nil {
-				ExportToJSON("list_providers", jsonData, "list_providers", "https://openrouter.ai/api/v1/providers", resp.StatusCode)
+				utils.ExportToJSON("list_providers", jsonData, "list_providers", "https://openrouter.ai/api/v1/providers", resp.StatusCode)
 			}
 		}
 	} else {
-		printError(fmt.Sprintf("API request failed with status %d: %s", resp.StatusCode, string(body)))
+		utils.PrintError(fmt.Sprintf("API request failed with status %d: %s", resp.StatusCode, string(body)))
 	}
 }

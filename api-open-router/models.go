@@ -1,4 +1,4 @@
-package tools
+package api_open_router
 
 import (
 	"encoding/json"
@@ -7,35 +7,37 @@ import (
 	"net/http"
 	"strings"
 
+	"ai-agent/utils"
+
 	"github.com/fatih/color"
 )
 
 func GetModelInfo(modelID string, exportJSON bool) {
 	if openRouterApiKey == "" {
-		printError("OPENROUTER_API_KEY environment variable is required")
+		utils.PrintError("OPENROUTER_API_KEY environment variable is required")
 		return
 	}
 
 	if modelID == "" {
-		printError("Model ID cannot be empty")
+		utils.PrintError("Model ID cannot be empty")
 		return
 	}
 
 	parts := strings.Split(modelID, "/")
 	if len(parts) != 2 {
-		printError("Model ID must be in format 'author/slug' (e.g., z-ai/glm-4.6)")
+		utils.PrintError("Model ID must be in format 'author/slug' (e.g., z-ai/glm-4.6)")
 		return
 	}
 
 	author := parts[0]
 	slug := parts[1]
 
-	printInfo("Fetching detailed model information and endpoints...")
+	utils.PrintInfo("Fetching detailed model information and endpoints...")
 
 	url := fmt.Sprintf("https://openrouter.ai/api/v1/models/%s/%s/endpoints", author, slug)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		printError("Failed to create request: " + err.Error())
+		utils.PrintError("Failed to create request: " + err.Error())
 		return
 	}
 
@@ -43,19 +45,19 @@ func GetModelInfo(modelID string, exportJSON bool) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		printError("Failed to make request: " + err.Error())
+		utils.PrintError("Failed to make request: " + err.Error())
 		return
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		printError("Failed to read response body: " + err.Error())
+		utils.PrintError("Failed to read response body: " + err.Error())
 		return
 	}
 
 	if resp.StatusCode == http.StatusOK {
-		printSuccess("Model information and endpoints retrieved successfully")
+		utils.PrintSuccess("Model information and endpoints retrieved successfully")
 		cyan := color.New(color.FgCyan)
 		cyan.Printf("Detailed information for model '%s':\n", modelID)
 		fmt.Println(string(body))
@@ -63,25 +65,25 @@ func GetModelInfo(modelID string, exportJSON bool) {
 		if exportJSON {
 			var jsonData any
 			if err := json.Unmarshal(body, &jsonData); err == nil {
-				ExportToJSON("model_info", jsonData, "model_info", url, resp.StatusCode)
+				utils.ExportToJSON("model_info", jsonData, "model_info", url, resp.StatusCode)
 			}
 		}
 	} else {
-		printError(fmt.Sprintf("API request failed with status %d: %s", resp.StatusCode, string(body)))
+		utils.PrintError(fmt.Sprintf("API request failed with status %d: %s", resp.StatusCode, string(body)))
 	}
 }
 
 func GetUserModels(exportJSON bool) {
 	if openRouterApiKey == "" {
-		printError("OPENROUTER_API_KEY environment variable is required")
+		utils.PrintError("OPENROUTER_API_KEY environment variable is required")
 		return
 	}
 
-	printInfo("Fetching user models with provider preferences...")
+	utils.PrintInfo("Fetching user models with provider preferences...")
 
 	req, err := http.NewRequest("GET", "https://openrouter.ai/api/v1/models/user", nil)
 	if err != nil {
-		printError("Failed to create request: " + err.Error())
+		utils.PrintError("Failed to create request: " + err.Error())
 		return
 	}
 
@@ -89,29 +91,29 @@ func GetUserModels(exportJSON bool) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		printError("Failed to make request: " + err.Error())
+		utils.PrintError("Failed to make request: " + err.Error())
 		return
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		printError("Failed to read response body: " + err.Error())
+		utils.PrintError("Failed to read response body: " + err.Error())
 		return
 	}
 
 	if resp.StatusCode == http.StatusOK {
-		printSuccess("User models with provider preferences retrieved successfully")
+		utils.PrintSuccess("User models with provider preferences retrieved successfully")
 		cyan := color.New(color.FgCyan)
 		cyan.Println("Your preferred models and providers:")
 		fmt.Println(string(body))
 		if exportJSON {
 			var jsonData any
 			if err := json.Unmarshal(body, &jsonData); err == nil {
-				ExportToJSON("user_models", jsonData, "user_models", "https://openrouter.ai/api/v1/models/user", resp.StatusCode)
+				utils.ExportToJSON("user_models", jsonData, "user_models", "https://openrouter.ai/api/v1/models/user", resp.StatusCode)
 			}
 		}
 	} else {
-		printError(fmt.Sprintf("API request failed with status %d: %s", resp.StatusCode, string(body)))
+		utils.PrintError(fmt.Sprintf("API request failed with status %d: %s", resp.StatusCode, string(body)))
 	}
 }

@@ -1,4 +1,4 @@
-package tools
+package utils
 
 import (
 	"encoding/json"
@@ -54,7 +54,7 @@ func ExportToJSON(filename string, data any, requestType, endpoint string, statu
 
 	exportDir := "exports"
 	if err := os.MkdirAll(exportDir, 0755); err != nil {
-		printError("Failed to create exports directory: " + err.Error())
+		PrintError("Failed to create exports directory: " + err.Error())
 		return
 	}
 
@@ -78,7 +78,7 @@ func ExportToJSON(filename string, data any, requestType, endpoint string, statu
 	encoder.SetIndent("", "  ")
 
 	if err := encoder.Encode(exportData); err != nil {
-		printError("Failed to marshal JSON: " + err.Error())
+		PrintError("Failed to marshal JSON: " + err.Error())
 		return
 	}
 
@@ -86,7 +86,7 @@ func ExportToJSON(filename string, data any, requestType, endpoint string, statu
 
 	err := os.WriteFile(filepath, jsonData, 0644)
 	if err != nil {
-		printError("Failed to write JSON file: " + err.Error())
+		PrintError("Failed to write JSON file: " + err.Error())
 		return
 	}
 

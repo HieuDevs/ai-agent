@@ -1,13 +1,15 @@
 package main
 
 import (
+	"ai-agent/utils"
+	workflows "ai-agent/work-flows/agents"
+	"ai-agent/work-flows/models"
 	"bufio"
-	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
-
-	"ai-agent/tools"
 
 	"github.com/fatih/color"
 	"github.com/joho/godotenv"
@@ -28,39 +30,150 @@ func main() {
 		os.Exit(1)
 	}
 
-	tools.Init(openRouterApiKey)
-	tools.PrintHeader()
+	runEnglishChatbot(openRouterApiKey)
+}
+
+func runEnglishChatbot(apiKey string) {
+	yellow := color.New(color.FgYellow)
+	green := color.New(color.FgGreen)
+
+	yellow.Println("\n🎯 Starting English Conversation Chatbot...")
+
+	topic := getUserInput("love", "Topic (e.g., travel, food, work, hobbies): ")
+	level := getConversationLevel()
+
+	green.Printf("🚀 Launching chatbot with topic: %s, level: %s\n\n", topic, level)
+
+	runChatbotWithTopic(apiKey, models.ConversationLevel(level), topic)
+}
+
+func runChatbotWithTopic(apiKey string, level models.ConversationLevel, topic string) {
+	chatbot := workflows.NewChatbotOrchestrator(apiKey, level, topic)
+	chatbot.StartConversation()
+}
+
+func getAvailableTopics() []string {
+	configDir := utils.GetPromptsDir()
+	files, err := filepath.Glob(filepath.Join(configDir, "*.yaml"))
+	if err != nil {
+		log.Printf("Error reading config directory: %v", err)
+		return []string{"love"}
+	}
+
+	var topics []string
+	for _, file := range files {
+		filename := filepath.Base(file)
+		if strings.HasSuffix(filename, "_prompt.yaml") {
+			topic := strings.TrimSuffix(filename, "_prompt.yaml")
+			if topic != "" {
+				topics = append(topics, topic)
+			}
+		}
+	}
+
+	sort.Strings(topics)
+	return topics
+}
+
+func getUserInput(defaultValue, prompt string) string {
+	green := color.New(color.FgGreen)
+	blue := color.New(color.FgCyan)
+	yellow := color.New(color.FgYellow)
+
+	topics := getAvailableTopics()
+
+	blue.Println("What would you like to talk about?")
+	blue.Println("\nAvailable conversation topics:")
+	for _, topic := range topics {
+		yellow.Printf("• %s\n", strings.Title(topic))
+	}
+	blue.Println()
 
 	reader := bufio.NewReader(os.Stdin)
 
 	for {
-		tools.PrintMenu()
-		tools.PrintPrompt()
-
+		green.Print(prompt)
 		input, _ := reader.ReadString('\n')
-		choice := strings.TrimSpace(input)
+		input = strings.TrimSpace(input)
 
-		// Parse export flag from input
-		cleanedInput, exportJSON := tools.ParseExportFlag(choice)
-
-		switch cleanedInput {
-		case "1":
-			tools.CheckApiKeyStatus(exportJSON)
-		case "2":
-			tools.GetUserModels(exportJSON)
-		case "3":
-			fmt.Print("Enter model ID (e.g., z-ai/glm-4.6): ")
-			modelID, _ := reader.ReadString('\n')
-			modelID = strings.TrimSpace(modelID)
-			tools.GetModelInfo(modelID, exportJSON)
-		case "4":
-			tools.PrintGoodbye()
-			os.Exit(0)
-		default:
-			red := color.New(color.FgRed, color.Bold)
-			red.Println("✗ Invalid choice. Please select 1-4.")
+		if input == "" {
+			input = defaultValue
+			blue.Printf("Using default topic: %s\n", input)
+			return input
 		}
 
-		fmt.Println()
+		if len(input) < 2 {
+			red := color.New(color.FgRed)
+			red.Println("Topic must be at least 2 characters long. Please try again.")
+			continue
+		}
+
+		inputLower := strings.ToLower(input)
+		for _, topic := range topics {
+			if strings.ToLower(topic) == inputLower {
+				return topic
+			}
+		}
+
+		blue.Printf("Hmm, I don't see '%s' in the available topics. ", input)
+		blue.Println("Please choose from the list above or try again.")
+	}
+}
+
+func getConversationLevel() string {
+	green := color.New(color.FgGreen)
+	blue := color.New(color.FgCyan)
+	yellow := color.New(color.FgYellow)
+
+	levels := []string{
+		"beginner",
+		"elementary",
+		"intermediate",
+		"upper_intermediate",
+		"advanced",
+		"fluent",
+	}
+
+	blue.Println("\nSelect your English conversation level:")
+	for i, level := range levels {
+		blue.Printf("%d. %s\n", i+1, strings.Title(strings.ReplaceAll(level, "_", " ")))
+	}
+
+	reader := bufio.NewReader(os.Stdin)
+
+	for {
+		green.Print("Enter your level (1-6, default: intermediate): ")
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(input)
+
+		if input == "" {
+			yellow.Println("Using default level: intermediate")
+			return "intermediate"
+		}
+
+		if input == "1" || strings.ToLower(input) == levels[0] {
+			return levels[0]
+		}
+		if input == "2" || strings.ToLower(input) == levels[1] {
+			return levels[1]
+		}
+		if input == "3" || strings.ToLower(input) == levels[2] {
+			return levels[2]
+		}
+		if input == "4" || strings.ToLower(input) == levels[3] {
+			return levels[3]
+		}
+		if input == "5" || strings.ToLower(input) == levels[4] {
+			return levels[4]
+		}
+		if input == "6" || strings.ToLower(input) == levels[5] {
+			return levels[5]
+		}
+		if models.IsValidConversationLevel(strings.ToLower(input)) {
+			return strings.ToLower(input)
+		}
+
+		red := color.New(color.FgRed)
+		red.Println("Invalid input. Please enter a number (1-6) or the level name.")
 	}
 }

@@ -1,0 +1,290 @@
+package agents
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"strings"
+
+	"ai-agent/utils"
+	"ai-agent/work-flows/models"
+
+	"github.com/fatih/color"
+)
+
+type ChatbotOrchestrator struct {
+	manager       *AgentManager
+	sessionActive bool
+}
+
+func NewChatbotOrchestrator(apiKey string, level models.ConversationLevel, topic string) *ChatbotOrchestrator {
+	manager := NewManager(apiKey, level, topic)
+
+	orchestrator := &ChatbotOrchestrator{
+		manager:       manager,
+		sessionActive: false,
+	}
+
+	orchestrator.printWelcome()
+	return orchestrator
+}
+
+func (co *ChatbotOrchestrator) printWelcome() {
+
+	yellow := color.New(color.FgYellow, color.Bold)
+	green := color.New(color.FgGreen)
+
+	green.Println("🎯 Let's start practicing! Type 'quit' to exit anytime.")
+	green.Printf("📝 All responses will be in English only. We avoid sensitive or inappropriate topics.\n")
+	yellow.Println()
+}
+
+func (co *ChatbotOrchestrator) StartConversation() {
+	co.sessionActive = true
+
+	conversationJob := models.JobRequest{
+		Task: "conversation",
+	}
+
+	response := co.manager.ProcessJob(conversationJob)
+	if !response.Success {
+		utils.PrintInfo(fmt.Sprintf("Failed to start conversation: %s", response.Error))
+	}
+
+	co.interactiveSession()
+}
+
+func (co *ChatbotOrchestrator) interactiveSession() {
+	reader := bufio.NewReader(os.Stdin)
+
+	for co.sessionActive {
+		fmt.Print("\n➤ Your response: ")
+
+		input, _ := reader.ReadString('\n')
+		userMessage := strings.TrimSpace(input)
+
+		if strings.ToLower(userMessage) == "quit" || strings.ToLower(userMessage) == "exit" {
+			co.endSession()
+			break
+		}
+
+		if strings.ToLower(userMessage) == "help" {
+			co.showHelp()
+			continue
+		}
+
+		if strings.ToLower(userMessage) == "stats" {
+			co.showStats()
+			continue
+		}
+
+		if strings.ToLower(userMessage) == "reset" {
+			co.resetConversation()
+			continue
+		}
+
+		if strings.ToLower(userMessage) == "set level" {
+			co.setLevelInteractive()
+			continue
+		}
+
+		if strings.ToLower(userMessage) == "level" || strings.ToLower(userMessage) == "current level" {
+			co.showCurrentLevel()
+			continue
+		}
+
+		if userMessage == "" {
+			continue
+		}
+
+		co.processUserMessage(userMessage)
+	}
+}
+
+func (co *ChatbotOrchestrator) processUserMessage(userMessage string) {
+	conversationJob := models.JobRequest{
+		Task: "conversation",
+
+		UserMessage: userMessage,
+	}
+
+	utils.PrintInfo("Processing your message...")
+
+	conversationResponse := co.manager.ProcessJob(conversationJob)
+	if !conversationResponse.Success {
+		utils.PrintError(fmt.Sprintf("Conversation failed: %s", conversationResponse.Error))
+		return
+	}
+
+}
+
+func (co *ChatbotOrchestrator) endSession() {
+	co.sessionActive = false
+	conversationAgent := co.manager.agents["ConversationAgent"].(*ConversationAgent)
+	green := color.New(color.FgGreen, color.Bold)
+	cyan := color.New(color.FgCyan)
+
+	green.Println("\n🎉 Thank you for practicing English with me!")
+
+	stats := conversationAgent.GetConversationStats()
+	cyan.Printf("📈 Messages exchanged: %d (you: %d, me: %d)\n",
+		stats["total_messages"], stats["user_messages"], stats["bot_messages"])
+
+	green.Println("👋 Keep practicing! See you next time!")
+}
+
+func (co *ChatbotOrchestrator) showHelp() {
+	yellow := color.New(color.FgYellow, color.Bold)
+	white := color.New(color.FgWhite)
+	green := color.New(color.FgGreen)
+	yellow.Println("\n📖 Available Commands:")
+	white.Println("• quit/exit - End the conversation")
+	white.Println("• help - Show this help message")
+	white.Println("• stats - Show conversation statistics")
+	white.Println("• reset - Reset conversation history")
+	white.Println("• level - Show current conversation level")
+	white.Println("• set level - Change conversation difficulty level")
+	white.Println("• Any other text - Continue the conversation with your response")
+	green.Println("\n📝 Note: All responses are in English only. We avoid sensitive or inappropriate topics.")
+}
+
+func (co *ChatbotOrchestrator) showStats() {
+	conversationAgent := co.manager.agents["ConversationAgent"].(*ConversationAgent)
+	stats := conversationAgent.GetConversationStats()
+
+	cyan := color.New(color.FgCyan, color.Bold)
+	green := color.New(color.FgGreen)
+
+	cyan.Println("\n📊 Conversation Statistics:")
+	green.Printf("• Current level: %s\n", conversationAgent.GetLevel())
+	green.Printf("• Total messages: %d\n", stats["total_messages"])
+	green.Printf("• Your messages: %d\n", stats["user_messages"])
+	green.Printf("• My responses: %d\n", stats["bot_messages"])
+}
+
+func (co *ChatbotOrchestrator) setLevelInteractive() {
+	reader := bufio.NewReader(os.Stdin)
+	conversationAgent := co.manager.agents["ConversationAgent"].(*ConversationAgent)
+
+	yellow := color.New(color.FgYellow, color.Bold)
+	cyan := color.New(color.FgCyan)
+	green := color.New(color.FgGreen)
+	white := color.New(color.FgWhite)
+
+	yellow.Println("\n🎯 Conversation Level Settings")
+	cyan.Printf("Current level: %s\n\n", conversationAgent.GetLevel())
+
+	green.Println("Available levels:")
+	white.Println("1. Beginner      - Simple vocabulary, basic grammar, short sentences (English only, family-friendly)")
+	white.Println("2. Elementary    - Basic tenses, familiar topics (English only, appropriate content)")
+	white.Println("3. Intermediate  - Varied vocabulary, complex grammar (English only, respectful discussions)")
+	white.Println("4. Upper Intermediate - Sophisticated language, abstract topics (English only, educational focus)")
+	white.Println("5. Advanced       - Native-level vocabulary, complex discussions (English only, intellectual yet respectful)")
+	white.Println("6. Fluent        - Authentic conversations as equals (English only, mature but appropriate)")
+
+	fmt.Print("\n➤ Enter level number (1-6) or name: ")
+	input, _ := reader.ReadString('\n')
+	levelInput := strings.TrimSpace(input)
+
+	if levelInput == "" {
+		yellow.Println("❌ No level selected. Level unchanged.")
+		return
+	}
+
+	newLevel := co.parseLevelInput(levelInput)
+	if newLevel == "" {
+		yellow.Println("❌ Invalid level selected. Level unchanged.")
+		return
+	}
+
+	conversationAgent.SetLevel(newLevel)
+
+	green.Printf("✅ Level changed to: %s\n", newLevel)
+
+	currentPrompts := map[string]string{
+		"beginner":           "Simple vocabulary, basic grammar, short sentences (English only, family-friendly topics)",
+		"elementary":         "Basic tenses, familiar topics (English only, appropriate content)",
+		"intermediate":       "Varied vocabulary, complex grammar (English only, respectful discussions)",
+		"upper_intermediate": "Sophisticated language, abstract topics (English only, educational focus)",
+		"advanced":           "Native-level vocabulary, complex discussions (English only, intellectual yet respectful)",
+		"fluent":             "Authentic conversations as equals (English only, mature but appropriate content)",
+	}
+
+	cyan.Printf("🎓 New conversation style: %s\n", currentPrompts[string(newLevel)])
+
+	green.Println("\nYour conversation style has been updated! Continue chatting to experience the new level.")
+}
+
+func (co *ChatbotOrchestrator) parseLevelInput(input string) models.ConversationLevel {
+	input = strings.ToLower(strings.TrimSpace(input))
+
+	levelMap := map[string]models.ConversationLevel{
+		"1":                  models.ConversationLevelBeginner,
+		"2":                  models.ConversationLevelElementary,
+		"3":                  models.ConversationLevelIntermediate,
+		"4":                  models.ConversationLevelUpperIntermediate,
+		"5":                  models.ConversationLevelAdvanced,
+		"6":                  models.ConversationLevelFluent,
+		"beginner":           models.ConversationLevelBeginner,
+		"elementary":         models.ConversationLevelElementary,
+		"intermediate":       models.ConversationLevelIntermediate,
+		"upper_intermediate": models.ConversationLevelUpperIntermediate,
+		"upper intermediate": models.ConversationLevelUpperIntermediate,
+		"advanced":           models.ConversationLevelAdvanced,
+		"fluent":             models.ConversationLevelFluent,
+	}
+
+	if level, exists := levelMap[input]; exists {
+		return level
+	}
+
+	return ""
+}
+
+func (co *ChatbotOrchestrator) showCurrentLevel() {
+	conversationAgent := co.manager.agents["ConversationAgent"].(*ConversationAgent)
+	currentLevel := conversationAgent.GetLevel()
+
+	yellow := color.New(color.FgYellow, color.Bold)
+	cyan := color.New(color.FgCyan)
+	green := color.New(color.FgGreen)
+	white := color.New(color.FgWhite)
+
+	yellow.Println("\n🎯 Current Conversation Level")
+	cyan.Printf("Level: %s\n", currentLevel)
+
+	levelDescriptions := map[string]string{
+		"beginner":           "Simple vocabulary, basic grammar, short sentences (5-8 words). English only, family-friendly topics.",
+		"elementary":         "Basic tenses, familiar topics, confidence building. English responses, appropriate content.",
+		"intermediate":       "Varied vocabulary, complex grammar, detailed responses. English only, respectful discussions.",
+		"upper_intermediate": "Sophisticated language, abstract topics, critical thinking. English only, educational focus.",
+		"advanced":           "Native-level vocabulary, complex discussions, nuanced perspectives. English only, intellectual yet respectful.",
+		"fluent":             "Authentic conversations as equals, expert-level debates. English only, mature but appropriate content.",
+	}
+
+	green.Printf("Style: %s\n", levelDescriptions[string(currentLevel)])
+
+	capabilities := conversationAgent.GetLevelSpecificCapabilities()
+	white.Println("\nCapabilities:")
+	for _, capability := range capabilities {
+		white.Printf("• %s\n", capability)
+	}
+
+	white.Println("\nType 'set level' to change the difficulty level.")
+}
+
+func (co *ChatbotOrchestrator) resetConversation() {
+	co.manager.agents["ConversationAgent"].(*ConversationAgent).ResetConversation()
+
+	green := color.New(color.FgGreen)
+	green.Println("🔄 Conversation history has been reset!")
+
+	conversationJob := models.JobRequest{
+		Task: "conversation",
+	}
+
+	response := co.manager.ProcessJob(conversationJob)
+	if !response.Success {
+		utils.PrintInfo(fmt.Sprintf("Conversation reset: %s", response.Result))
+	}
+}
