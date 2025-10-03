@@ -16,14 +16,16 @@ type AgentManager struct {
 	apiClient  client.Client
 	agents     map[string]models.Agent
 	currentJob *models.JobRequest
+	sessionId  string
 }
 
-func NewManager(apiKey string, level models.ConversationLevel, topic string, language string) *AgentManager {
+func NewManager(apiKey string, level models.ConversationLevel, topic string, language string, sessionId string) *AgentManager {
 	client := client.NewOpenRouterClient(apiKey)
 
 	manager := &AgentManager{
 		apiClient: client,
 		agents:    make(map[string]models.Agent),
+		sessionId: sessionId,
 	}
 
 	manager.RegisterAgents(level, topic, language)
@@ -79,6 +81,10 @@ func (m *AgentManager) GetConversationAgent() *agents.ConversationAgent {
 		return nil
 	}
 	return agent.(*agents.ConversationAgent)
+}
+
+func (m *AgentManager) GetSessionId() string {
+	return m.sessionId
 }
 
 func (m *AgentManager) ProcessJob(job models.JobRequest) *models.JobResponse {

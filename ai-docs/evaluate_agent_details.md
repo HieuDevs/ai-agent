@@ -53,15 +53,15 @@ type EvaluationResponse struct {
 **Fields:**
 - `Status` - Evaluation level: "excellent", "good", or "needs_improvement"
 - `ShortDescription` - Brief encouraging feedback (translated to target language)
-- `LongDescription` - Detailed analysis with `<b>tags</b>` for highlights (translated to target language)
-- `Correct` - Corrected sentence in English (or original if already perfect)
+- `LongDescription` - Encouragement-only for "excellent"/"good"; detailed corrections with `<b>tags</b>` for "needs_improvement" (translated to target language)
+- `Correct` - Provide correction only for "needs_improvement"; for "excellent"/"good", output the original sentence
 
 **Example Response (Vietnamese):**
 ```json
 {
   "status": "good",
   "short_description": "Câu trả lời của bạn khá tốt! Bạn đã diễn đạt ý tưởng rõ ràng.",
-  "long_description": "Bạn đã sử dụng cấu trúc câu tốt. Tuy nhiên, có một lỗi nhỏ về thì: bạn nên dùng <b>\"have been playing\"</b> thay vì <b>\"am playing\"</b> vì bạn đang nói về một hành động bắt đầu từ quá khứ và vẫn tiếp tục đến hiện tại.",
+  "long_description": "Rất tốt! Hãy tiếp tục giữ phong độ và luyện tập thêm để diễn đạt tự nhiên hơn.",
   "correct": "I have been playing soccer for 5 years."
 }
 ```
@@ -257,8 +257,6 @@ Bạn đã sử dụng cấu trúc câu tốt. Tuy nhiên, có một lỗi nhỏ
 bạn nên dùng <b>"have been playing"</b> thay vì <b>"am playing"</b> 
 vì bạn đang nói về một hành động bắt đầu từ quá khứ và vẫn tiếp tục 
 đến hiện tại.
-
-✅ Corrected: I have been playing soccer for 5 years.
 ────────────────────────────────────────
 ```
 
@@ -267,7 +265,7 @@ vì bạn đang nói về một hành động bắt đầu từ quá khứ và v
 - Cleans JSON response (removes code blocks if present)
 - Parses JSON to EvaluationResponse
 - Formats with visual separators
-- Shows corrected version only if not excellent
+- Shows corrected version only for "needs_improvement"
 - Handles parsing errors gracefully
 
 ### 5. ParseEvaluationResponse

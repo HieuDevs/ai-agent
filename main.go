@@ -108,6 +108,10 @@ func getAvailableTopics() []string {
 	var topics []string
 	for _, file := range files {
 		filename := filepath.Base(file)
+		fmt.Println(filename)
+		if strings.HasPrefix(filename, "_") {
+			continue
+		}
 		if strings.HasSuffix(filename, "_prompt.yaml") {
 			topic := strings.TrimSuffix(filename, "_prompt.yaml")
 			if topic != "" {

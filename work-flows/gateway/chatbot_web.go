@@ -36,15 +36,17 @@ type ChatRequest struct {
 }
 
 type ChatResponse struct {
-	Success bool          `json:"success"`
-	Message string        `json:"message"`
-	Stats   interface{}   `json:"stats,omitempty"`
-	Level   string        `json:"level,omitempty"`
-	Topic   string        `json:"topic,omitempty"`
-	Topics  []string      `json:"topics,omitempty"`
-	History []ChatMessage `json:"history,omitempty"`
-	Prompts []PromptInfo  `json:"prompts,omitempty"`
-	Content string        `json:"content,omitempty"`
+	Success     bool          `json:"success"`
+	Message     string        `json:"message"`
+	Stats       interface{}   `json:"stats,omitempty"`
+	Level       string        `json:"level,omitempty"`
+	Topic       string        `json:"topic,omitempty"`
+	Topics      []string      `json:"topics,omitempty"`
+	History     []ChatMessage `json:"history,omitempty"`
+	Prompts     []PromptInfo  `json:"prompts,omitempty"`
+	Content     string        `json:"content,omitempty"`
+	Evaluation  interface{}   `json:"evaluation,omitempty"`
+	Suggestions interface{}   `json:"suggestions,omitempty"`
 }
 
 type PromptInfo struct {
@@ -181,16 +183,56 @@ func (cw *ChatbotWeb) handleStream(w http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case <-done:
+			aiResponse := fullResponse.String()
 			conversationAgent.SetConversationHistory(append(conversationAgent.GetConversationHistory(),
 				models.Message{Role: models.MessageRoleUser, Content: userMessage}))
 			conversationAgent.SetConversationHistory(append(conversationAgent.GetConversationHistory(),
-				models.Message{Role: models.MessageRoleAssistant, Content: fullResponse.String()}))
+				models.Message{Role: models.MessageRoleAssistant, Content: aiResponse}))
 
 			if len(conversationAgent.GetConversationHistory()) > 20 {
 				conversationAgent.SetConversationHistory(conversationAgent.GetConversationHistory()[2:])
 			}
 
-			data := map[string]interface{}{"done": true}
+			// Get evaluation
+			var evaluation interface{}
+			evaluateAgent, evalExists := cw.manager.GetAgent("EvaluateAgent")
+			if evalExists {
+				evaluateJob := models.JobRequest{
+					Task:          "evaluate",
+					UserMessage:   userMessage,
+					LastAIMessage: aiResponse,
+				}
+				evaluateResponse := evaluateAgent.ProcessTask(evaluateJob)
+				if evaluateResponse.Success {
+					var evaluationMap map[string]interface{}
+					if err := json.Unmarshal([]byte(evaluateResponse.Result), &evaluationMap); err == nil {
+						evaluation = evaluationMap
+					}
+				}
+			}
+
+			// Get suggestions
+			var suggestions interface{}
+			suggestionAgent, sugExists := cw.manager.GetAgent("SuggestionAgent")
+			if sugExists {
+				suggestionJob := models.JobRequest{
+					Task:          "suggestion",
+					LastAIMessage: aiResponse,
+				}
+				suggestionResponse := suggestionAgent.ProcessTask(suggestionJob)
+				if suggestionResponse.Success {
+					var suggestionsMap map[string]interface{}
+					if err := json.Unmarshal([]byte(suggestionResponse.Result), &suggestionsMap); err == nil {
+						suggestions = suggestionsMap
+					}
+				}
+			}
+
+			data := map[string]interface{}{
+				"done":        true,
+				"evaluation":  evaluation,
+				"suggestions": suggestions,
+			}
 			jsonData, _ := json.Marshal(data)
 			fmt.Fprintf(w, "data: %s\n\n", jsonData)
 			flusher.Flush()
@@ -202,10 +244,14 @@ func (cw *ChatbotWeb) handleStream(w http.ResponseWriter, r *http.Request) {
 				content := streamResponse.Choices[0].Delta.Content
 				fullResponse.WriteString(content)
 
-				data := map[string]interface{}{"content": content, "done": false}
-				jsonData, _ := json.Marshal(data)
-				fmt.Fprintf(w, "data: %s\n\n", jsonData)
-				flusher.Flush()
+                data := map[string]interface{}{
+                    "content": content,
+                    "done": false,
+                    "type": "message",
+                }
+                jsonData, _ := json.Marshal(data)
+                fmt.Fprintf(w, "data: %s\n\n", jsonData)
+                flusher.Flush()
 			}
 		}
 	}
@@ -374,7 +420,8 @@ func (cw *ChatbotWeb) handleCreateSession(w http.ResponseWriter, r *http.Request
 	}
 
 	cw.mu.Lock()
-	cw.manager = managers.NewManager(cw.apiKey, level, req.Topic, language)
+	sessionId := fmt.Sprintf("web_%d", utils.GetCurrentTimestamp())
+	cw.manager = managers.NewManager(cw.apiKey, level, req.Topic, language, sessionId)
 	cw.mu.Unlock()
 
 	conversationJob := models.JobRequest{

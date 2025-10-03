@@ -349,7 +349,7 @@ func (ea *EvaluateAgent) DisplayEvaluation(jsonResponse string) {
 		fmt.Printf("📖 Detailed Feedback:\n%s\n\n", evaluation.LongDescription)
 	}
 
-	if evaluation.Correct != "" && evaluation.Status != "excellent" {
+	if evaluation.Correct != "" {
 		fmt.Printf("✅ Corrected: %s\n", evaluation.Correct)
 	}
 	fmt.Println("────────────────────────────────────────")

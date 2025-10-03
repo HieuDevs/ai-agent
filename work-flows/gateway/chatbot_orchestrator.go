@@ -20,7 +20,8 @@ type ChatbotOrchestrator struct {
 }
 
 func NewChatbotOrchestrator(apiKey string, level models.ConversationLevel, topic string, language string) *ChatbotOrchestrator {
-	manager := managers.NewManager(apiKey, level, topic, language)
+	sessionId := fmt.Sprintf("cli_%d", utils.GetCurrentTimestamp())
+	manager := managers.NewManager(apiKey, level, topic, language, sessionId)
 
 	orchestrator := &ChatbotOrchestrator{
 		manager:       manager,
@@ -189,6 +190,7 @@ func (co *ChatbotOrchestrator) endSession() {
 	stats := conversationAgent.GetConversationStats()
 	cyan.Printf("📈 Messages exchanged: %d (you: %d, me: %d)\n",
 		stats["total_messages"], stats["user_messages"], stats["bot_messages"])
+	cyan.Printf("🔑 Session ID: %s\n", co.manager.GetSessionId())
 
 	green.Println("👋 Keep practicing! See you next time!")
 }
@@ -221,6 +223,7 @@ func (co *ChatbotOrchestrator) showStats() {
 	green.Printf("• Total messages: %d\n", stats["total_messages"])
 	green.Printf("• Your messages: %d\n", stats["user_messages"])
 	green.Printf("• My responses: %d\n", stats["bot_messages"])
+	green.Printf("• Session ID: %s\n", co.manager.GetSessionId())
 }
 
 func (co *ChatbotOrchestrator) setLevelInteractive() {
@@ -382,7 +385,8 @@ func (co *ChatbotOrchestrator) showConversationHistory() {
 	}
 
 	yellow.Println("\n📜 Conversation History")
-	cyan.Printf("Total messages: %d\n\n", len(history))
+	cyan.Printf("Total messages: %d\n", len(history))
+	cyan.Printf("Session ID: %s\n\n", co.manager.GetSessionId())
 
 	for i, message := range history {
 		switch message.Role {
@@ -396,5 +400,9 @@ func (co *ChatbotOrchestrator) showConversationHistory() {
 	}
 
 	white.Println()
-	utils.ExportToJSON("conversation_history.json", history, "conversation_export", "/export/history", 200)
+	exportData := map[string]interface{}{
+		"session_id": co.manager.GetSessionId(),
+		"history":    history,
+	}
+	utils.ExportToJSON("conversation_history.json", exportData, "conversation_export", "/export/history", 200)
 }
