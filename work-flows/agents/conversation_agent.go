@@ -86,46 +86,23 @@ func (ca *ConversationAgent) ProcessTask(task models.JobRequest) *models.JobResp
 	utils.PrintInfo(fmt.Sprintf("ConversationAgent processing task: %s", task.Task))
 
 	if task.UserMessage == "" {
-		return ca.generateConversationStarter(ca.model, ca.temperature, ca.maxTokens)
+		return ca.generateConversationStarter()
 	}
 
 	return ca.generateConversationalResponse(task, ca.model, ca.temperature, ca.maxTokens)
 }
 
-func (ca *ConversationAgent) generateConversationStarter(
-	model string,
-	temperature float64,
-	maxTokens int,
-) *models.JobResponse {
+func (ca *ConversationAgent) generateConversationStarter() *models.JobResponse {
+	// Get starter message from prompt
 	pathPrompts := filepath.Join(utils.GetPromptsDir(), ca.Topic+"_prompt.yaml")
-	levelPrompt := getLevelSpecificPrompt(pathPrompts, ca.level, "starter")
+	starterMessage := getLevelSpecificPrompt(pathPrompts, ca.level, "starter")
 
-	messages := []models.Message{
-		{
-			Role:    models.MessageRoleSystem,
-			Content: levelPrompt,
-		},
-	}
-
-	fmt.Println("🤖 Writing conversation...")
-	response := ca.getStreamingResponse(messages, "", model, temperature, maxTokens)
-
-	if response == "" {
-		utils.PrintError("Conversation generation failed")
-		return &models.JobResponse{
-			AgentName: ca.Name(),
-			Success:   false,
-			Result:    "",
-			Error:     "Failed to generate response",
-		}
-	}
-
-	ca.addToHistory(models.MessageRoleAssistant, response)
+	ca.addToHistory(models.MessageRoleAssistant, starterMessage)
 
 	return &models.JobResponse{
 		AgentName: ca.Name(),
 		Success:   true,
-		Result:    response,
+		Result:    starterMessage,
 	}
 }
 
@@ -259,6 +236,10 @@ func (ca *ConversationAgent) countMessagesByRole(role models.MessageRole) int {
 		}
 	}
 	return count
+}
+
+func (ca *ConversationAgent) GetFullConversationHistory() []models.Message {
+	return ca.conversationHistory
 }
 
 func (ca *ConversationAgent) showVietnameseTranslation(text string) {

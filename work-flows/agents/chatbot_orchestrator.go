@@ -93,6 +93,11 @@ func (co *ChatbotOrchestrator) interactiveSession() {
 			continue
 		}
 
+		if strings.ToLower(userMessage) == "history" {
+			co.showConversationHistory()
+			continue
+		}
+
 		if userMessage == "" {
 			continue
 		}
@@ -141,6 +146,7 @@ func (co *ChatbotOrchestrator) showHelp() {
 	white.Println("• quit/exit - End the conversation")
 	white.Println("• help - Show this help message")
 	white.Println("• stats - Show conversation statistics")
+	white.Println("• history - Show conversation history and export it")
 	white.Println("• reset - Reset conversation history")
 	white.Println("• level - Show current conversation level")
 	white.Println("• set level - Change conversation difficulty level")
@@ -287,4 +293,39 @@ func (co *ChatbotOrchestrator) resetConversation() {
 	if !response.Success {
 		utils.PrintInfo(fmt.Sprintf("Conversation reset: %s", response.Result))
 	}
+}
+
+func (co *ChatbotOrchestrator) showConversationHistory() {
+	conversationAgent := co.manager.agents["ConversationAgent"].(*ConversationAgent)
+	history := conversationAgent.GetFullConversationHistory()
+
+	yellow := color.New(color.FgYellow, color.Bold)
+	cyan := color.New(color.FgCyan)
+	green := color.New(color.FgGreen)
+	white := color.New(color.FgWhite)
+	blue := color.New(color.FgBlue)
+
+	if len(history) == 0 {
+		yellow.Println("\n📜 Conversation History")
+		cyan.Println("No conversation history available yet.")
+		white.Println("Start a conversation to build history!")
+		return
+	}
+
+	yellow.Println("\n📜 Conversation History")
+	cyan.Printf("Total messages: %d\n\n", len(history))
+
+	for i, message := range history {
+		switch message.Role {
+		case models.MessageRoleUser:
+			green.Printf("[%d] You: %s\n", i+1, message.Content)
+		case models.MessageRoleAssistant:
+			blue.Printf("    AI: %s\n", message.Content)
+		case models.MessageRoleSystem:
+			continue
+		}
+	}
+
+	white.Println()
+	utils.ExportToJSON("conversation_history.json", history, "conversation_export", "/export/history", 200)
 }

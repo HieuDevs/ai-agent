@@ -39,7 +39,7 @@ func runEnglishChatbot(apiKey string) {
 
 	yellow.Println("\n🎯 Starting English Conversation Chatbot...")
 
-	topic := getUserInput("love", "Topic (e.g., travel, food, work, hobbies): ")
+	topic := getUserInput("sports")
 	level := getConversationLevel()
 
 	green.Printf("🚀 Launching chatbot with topic: %s, level: %s\n\n", topic, level)
@@ -75,8 +75,7 @@ func getAvailableTopics() []string {
 	return topics
 }
 
-func getUserInput(defaultValue, prompt string) string {
-	green := color.New(color.FgGreen)
+func getUserInput(defaultValue string) string {
 	blue := color.New(color.FgCyan)
 	yellow := color.New(color.FgYellow)
 
@@ -92,7 +91,6 @@ func getUserInput(defaultValue, prompt string) string {
 	reader := bufio.NewReader(os.Stdin)
 
 	for {
-		green.Print(prompt)
 		input, _ := reader.ReadString('\n')
 		input = strings.TrimSpace(input)
 

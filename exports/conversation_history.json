@@ -1,0 +1,12 @@
+{
+  "timestamp": "2025-10-03T01:21:19+07:00",
+  "request_type": "conversation_export",
+  "endpoint": "/export/history",
+  "status": 200,
+  "data": [
+    {
+      "role": "assistant",
+      "content": "It looks like you didn't respond. That's okay! Let's try again.\n\nTeacher: \"Hi! That looks fun! Do you play basketball often?\"\n\nNow you can respond!"
+    }
+  ]
+}
