@@ -79,6 +79,7 @@ func (cw *ChatbotWeb) StartWebServer(port string) {
 	http.HandleFunc("/api/prompt/create", cw.handleCreatePrompt)
 	http.HandleFunc("/api/prompt/delete", cw.handleDeletePrompt)
 	http.HandleFunc("/api/translate", cw.handleTranslate)
+	http.HandleFunc("/api/suggestions", cw.handleGetSuggestions)
 
 	addr := ":" + port
 	fmt.Printf("🌐 Web server starting at http://localhost%s\n", addr)
@@ -168,6 +169,49 @@ func (cw *ChatbotWeb) handleStream(w http.ResponseWriter, r *http.Request) {
 
 	streamResponseChan := make(chan models.StreamResponse, 10)
 	done := make(chan bool)
+	evaluationChan := make(chan map[string]interface{}, 1)
+
+	// Run evaluation in parallel (non-blocking)
+	evaluateAgent, evalExists := cw.manager.GetAgent("EvaluateAgent")
+	if evalExists {
+		go func() {
+			defer close(evaluationChan)
+
+			lastAIMessage := ""
+			history := conversationAgent.GetConversationHistory()
+			for i := len(history) - 1; i >= 0; i-- {
+				if history[i].Role == models.MessageRoleAssistant {
+					lastAIMessage = history[i].Content
+					break
+				}
+			}
+
+			utils.PrintInfo(fmt.Sprintf("Evaluating user message: '%s', Last AI: '%s'", userMessage, lastAIMessage))
+
+			evaluateJob := models.JobRequest{
+				Task:          "evaluate",
+				UserMessage:   userMessage,
+				LastAIMessage: lastAIMessage,
+			}
+			evaluateResponse := evaluateAgent.ProcessTask(evaluateJob)
+			if evaluateResponse.Success {
+				utils.PrintInfo("Evaluation successful, preparing to send to client")
+				var evaluationMap map[string]interface{}
+				if err := json.Unmarshal([]byte(evaluateResponse.Result), &evaluationMap); err == nil {
+					utils.PrintInfo("Sending evaluation to channel")
+					evaluationChan <- evaluationMap
+					utils.PrintInfo("Evaluation sent to channel successfully")
+				} else {
+					utils.PrintError(fmt.Sprintf("Failed to unmarshal evaluation: %v", err))
+				}
+			} else {
+				utils.PrintError(fmt.Sprintf("Evaluation failed: %s", evaluateResponse.Error))
+			}
+		}()
+	} else {
+		utils.PrintInfo("EvaluateAgent not found, skipping evaluation")
+		close(evaluationChan)
+	}
 
 	go conversationAgent.GetClient().ChatCompletionStream(
 		conversationAgent.GetModel(),
@@ -179,6 +223,7 @@ func (cw *ChatbotWeb) handleStream(w http.ResponseWriter, r *http.Request) {
 	)
 
 	var fullResponse strings.Builder
+	evaluationSent := false
 
 	for {
 		select {
@@ -193,65 +238,68 @@ func (cw *ChatbotWeb) handleStream(w http.ResponseWriter, r *http.Request) {
 				conversationAgent.SetConversationHistory(conversationAgent.GetConversationHistory()[2:])
 			}
 
-			// Get evaluation
-			var evaluation interface{}
-			evaluateAgent, evalExists := cw.manager.GetAgent("EvaluateAgent")
-			if evalExists {
-				evaluateJob := models.JobRequest{
-					Task:          "evaluate",
-					UserMessage:   userMessage,
-					LastAIMessage: aiResponse,
-				}
-				evaluateResponse := evaluateAgent.ProcessTask(evaluateJob)
-				if evaluateResponse.Success {
-					var evaluationMap map[string]interface{}
-					if err := json.Unmarshal([]byte(evaluateResponse.Result), &evaluationMap); err == nil {
-						evaluation = evaluationMap
+			// Wait for evaluation if not yet received
+			if !evaluationSent {
+				utils.PrintInfo("Waiting for evaluation before sending done...")
+				evalMap, ok := <-evaluationChan
+				if ok && evalMap != nil {
+					utils.PrintInfo("Received evaluation in done handler, sending to client")
+					evalData := map[string]interface{}{
+						"done": false,
+						"type": "evaluation",
+						"data": evalMap,
 					}
+					evalJSON, _ := json.Marshal(evalData)
+					fmt.Fprintf(w, "data: %s\n\n", evalJSON)
+					flusher.Flush()
+					evaluationSent = true
+				} else {
+					utils.PrintInfo("Evaluation channel closed in done handler")
+					evaluationSent = true
 				}
 			}
 
-			// Get suggestions
-			var suggestions interface{}
-			suggestionAgent, sugExists := cw.manager.GetAgent("SuggestionAgent")
-			if sugExists {
-				suggestionJob := models.JobRequest{
-					Task:          "suggestion",
-					LastAIMessage: aiResponse,
-				}
-				suggestionResponse := suggestionAgent.ProcessTask(suggestionJob)
-				if suggestionResponse.Success {
-					var suggestionsMap map[string]interface{}
-					if err := json.Unmarshal([]byte(suggestionResponse.Result), &suggestionsMap); err == nil {
-						suggestions = suggestionsMap
-					}
-				}
+			// Send final done event
+			doneData := map[string]interface{}{
+				"done": true,
+				"type": "done",
 			}
-
-			data := map[string]interface{}{
-				"done":        true,
-				"evaluation":  evaluation,
-				"suggestions": suggestions,
-			}
-			jsonData, _ := json.Marshal(data)
-			fmt.Fprintf(w, "data: %s\n\n", jsonData)
+			doneJSON, _ := json.Marshal(doneData)
+			fmt.Fprintf(w, "data: %s\n\n", doneJSON)
 			flusher.Flush()
 			cw.mu.Unlock()
 			return
+
+		case evalMap, ok := <-evaluationChan:
+			if ok && evalMap != nil && !evaluationSent {
+				utils.PrintInfo("Sending evaluation to client via SSE")
+				evalData := map[string]interface{}{
+					"done": false,
+					"type": "evaluation",
+					"data": evalMap,
+				}
+				evalJSON, _ := json.Marshal(evalData)
+				utils.PrintInfo(fmt.Sprintf("Evaluation JSON: %s", string(evalJSON)))
+				fmt.Fprintf(w, "data: %s\n\n", evalJSON)
+				flusher.Flush()
+				evaluationSent = true
+			} else if !ok {
+				utils.PrintInfo("Evaluation channel closed without data")
+			}
 
 		case streamResponse := <-streamResponseChan:
 			if len(streamResponse.Choices) > 0 && streamResponse.Choices[0].Delta.Content != "" {
 				content := streamResponse.Choices[0].Delta.Content
 				fullResponse.WriteString(content)
 
-                data := map[string]interface{}{
-                    "content": content,
-                    "done": false,
-                    "type": "message",
-                }
-                jsonData, _ := json.Marshal(data)
-                fmt.Fprintf(w, "data: %s\n\n", jsonData)
-                flusher.Flush()
+				data := map[string]interface{}{
+					"content": content,
+					"done":    false,
+					"type":    "message",
+				}
+				jsonData, _ := json.Marshal(data)
+				fmt.Fprintf(w, "data: %s\n\n", jsonData)
+				flusher.Flush()
 			}
 		}
 	}
@@ -452,6 +500,9 @@ func getAvailableTopics() []string {
 	var topics []string
 	for _, file := range files {
 		filename := filepath.Base(file)
+		if strings.HasPrefix(filename, "_") {
+			continue
+		}
 		if strings.HasSuffix(filename, "_prompt.yaml") {
 			topic := strings.TrimSuffix(filename, "_prompt.yaml")
 			if topic != "" {
@@ -466,12 +517,27 @@ func getAvailableTopics() []string {
 func (cw *ChatbotWeb) handleGetPrompts(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	topics := getAvailableTopics()
-	prompts := make([]PromptInfo, len(topics))
-	for i, topic := range topics {
-		prompts[i] = PromptInfo{
-			Name:  topic + "_prompt.yaml",
-			Topic: topic,
+	configDir := utils.GetPromptsDir()
+	files, err := filepath.Glob(filepath.Join(configDir, "*.yaml"))
+	if err != nil {
+		json.NewEncoder(w).Encode(ChatResponse{
+			Success: false,
+			Message: "Failed to read prompts directory",
+		})
+		return
+	}
+
+	var prompts []PromptInfo
+	for _, file := range files {
+		filename := filepath.Base(file)
+		if strings.HasSuffix(filename, "_prompt.yaml") {
+			topic := strings.TrimSuffix(filename, "_prompt.yaml")
+			if topic != "" {
+				prompts = append(prompts, PromptInfo{
+					Name:  filename,
+					Topic: topic,
+				})
+			}
 		}
 	}
 
@@ -758,6 +824,83 @@ func (cw *ChatbotWeb) handleTranslate(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (cw *ChatbotWeb) handleGetSuggestions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	var req struct {
+		Message string `json:"message"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		json.NewEncoder(w).Encode(ChatResponse{
+			Success: false,
+			Message: "Invalid request",
+		})
+		return
+	}
+
+	if req.Message == "" {
+		json.NewEncoder(w).Encode(ChatResponse{
+			Success: false,
+			Message: "Message is required",
+		})
+		return
+	}
+
+	cw.mu.Lock()
+	defer cw.mu.Unlock()
+
+	if cw.manager == nil {
+		json.NewEncoder(w).Encode(ChatResponse{
+			Success: false,
+			Message: "No active session",
+		})
+		return
+	}
+
+	suggestionAgent, exists := cw.manager.GetAgent("SuggestionAgent")
+	if !exists {
+		json.NewEncoder(w).Encode(ChatResponse{
+			Success: false,
+			Message: "Suggestion agent not available",
+		})
+		return
+	}
+
+	suggestionJob := models.JobRequest{
+		Task:          "suggestion",
+		LastAIMessage: req.Message,
+	}
+
+	suggestionResponse := suggestionAgent.ProcessTask(suggestionJob)
+	if !suggestionResponse.Success {
+		json.NewEncoder(w).Encode(ChatResponse{
+			Success: false,
+			Message: "Failed to get suggestions",
+		})
+		return
+	}
+
+	var suggestionsMap map[string]interface{}
+	if err := json.Unmarshal([]byte(suggestionResponse.Result), &suggestionsMap); err != nil {
+		json.NewEncoder(w).Encode(ChatResponse{
+			Success: false,
+			Message: "Failed to parse suggestions",
+		})
+		return
+	}
+
+	json.NewEncoder(w).Encode(ChatResponse{
+		Success:     true,
+		Suggestions: suggestionsMap,
+	})
+}
+
 func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
 	html := `<!DOCTYPE html>
 <html lang="en">
@@ -974,7 +1117,8 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
         
         .message.user {
             display: flex;
-            justify-content: flex-end;
+            flex-direction: column;
+            align-items: flex-end;
         }
         
         .message.assistant {
@@ -1018,6 +1162,87 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
             color: #999;
             font-size: 12px;
         }
+
+        .message-evaluation {
+            max-width: 70%;
+            margin-top: 12px;
+            background: #e3f2fd;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid #bbdefb;
+        }
+
+        .evaluation-header {
+            padding: 8px 12px;
+            background: #bbdefb;
+            color: #1565c0;
+            font-weight: 600;
+            font-size: 13px;
+        }
+
+        .evaluation-content {
+            padding: 12px;
+            font-size: 13px;
+            color: #333;
+            line-height: 1.5;
+        }
+
+        .evaluation-score {
+            margin-top: 8px;
+            font-weight: 600;
+            color: #1565c0;
+        }
+
+        .message-suggestions {
+            max-width: 70%;
+            margin-top: 12px;
+            background: #e8f5e9;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid #c8e6c9;
+        }
+
+        .suggestions-header {
+            padding: 8px 12px;
+            background: #c8e6c9;
+            color: #2e7d32;
+            font-weight: 600;
+            font-size: 13px;
+        }
+
+        .suggestions-content {
+            padding: 12px;
+        }
+
+        .suggestion-lead {
+            font-size: 14px;
+            color: #333;
+            margin-bottom: 10px;
+            line-height: 1.5;
+        }
+
+        .suggestion-options {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .suggestion-option {
+            padding: 8px 12px;
+            background: white;
+            border: 1px solid #c8e6c9;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #333;
+            transition: all 0.2s;
+        }
+
+        .suggestion-option:hover {
+            background: #c8e6c9;
+            border-color: #81c784;
+            transform: translateY(-1px);
+        }
         
         .typing-indicator {
             display: flex;
@@ -1060,6 +1285,7 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
         .chat-input-wrapper {
             display: flex;
             gap: 10px;
+            align-items: flex-end;
         }
         
         .chat-input {
@@ -1094,6 +1320,28 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
         }
         
         .btn-send:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .btn-hint {
+            padding: 12px 24px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        
+        .btn-hint:hover:not(:disabled) {
+            background: #45a049;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(76, 175, 80, 0.4);
+        }
+        
+        .btn-hint:disabled {
             opacity: 0.5;
             cursor: not-allowed;
         }
@@ -1324,7 +1572,7 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
             </div>
             
             <div class="section">
-                <div class="section-title">Conversation Prompt Files</div>
+                <div class="section-title">Prompt Files</div>
                 <div class="prompt-list" id="promptList">
                     <div style="padding: 20px; text-align: center; color: #999;">Loading...</div>
                 </div>
@@ -1344,6 +1592,7 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
         <div class="chat-input-container">
             <div class="chat-input-wrapper">
                 <textarea id="chatInput" class="chat-input" placeholder="Type your message..." rows="1"></textarea>
+                <button id="hintBtn" class="btn-hint" disabled>💡 Hint</button>
                 <button id="sendBtn" class="btn-send" disabled>Send</button>
             </div>
         </div>
@@ -1647,13 +1896,10 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
                     document.getElementById('chatTitle').textContent = data.topic + ' - ' + capitalizeLevel(data.level);
                     document.getElementById('chatInfo').textContent = 'Level: ' + capitalizeLevel(data.level);
                     document.getElementById('sendBtn').disabled = false;
+                    document.getElementById('hintBtn').disabled = false;
                     
                     document.getElementById('chatMessages').innerHTML = '';
-                    const {contentDiv, translationDiv} = addMessage('assistant', data.message, null);
-                    
-                    if (data.message) {
-                        await translateMessage(data.message, translationDiv);
-                    }
+                    addMessage('assistant', data.message, null);
                 }
             } catch (error) {
                 console.error('Error creating session:', error);
@@ -1670,6 +1916,10 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
             if (!isSending) {
                 sendMessage();
             }
+        });
+        
+        document.getElementById('hintBtn').addEventListener('click', () => {
+            showHint();
         });
         
         document.getElementById('chatInput').addEventListener('keydown', (e) => {
@@ -1700,8 +1950,16 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
                 let messageStarted = false;
                 let contentDiv, translationDiv;
                 
+                let userMessageDiv = null;
+                const messagesContainer = document.getElementById('chatMessages');
+                const userMessages = messagesContainer.querySelectorAll('.message.user');
+                if (userMessages.length > 0) {
+                    userMessageDiv = userMessages[userMessages.length - 1];
+                }
+
                 eventSource.onmessage = async (event) => {
                     const data = JSON.parse(event.data);
+                    console.log('SSE Event received:', data.type, data);
                     
                     if (data.done) {
                         eventSource.close();
@@ -1710,12 +1968,32 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
                         isSending = false;
                         document.getElementById('chatInput').focus();
                         
-                        if (contentDiv) {
-                            const fullText = contentDiv.textContent;
-                            if (fullText) {
-                                await translateMessage(fullText, translationDiv);
-                            }
+                        if (translationDiv && contentDiv && contentDiv.textContent) {
+                            translateMessage(contentDiv.textContent, translationDiv);
                         }
+                    } else if (data.type === 'evaluation') {
+                        console.log('Evaluation received:', data.data);
+                        console.log('User message div:', userMessageDiv);
+                        const evaluationDiv = document.createElement('div');
+                        evaluationDiv.className = 'message-evaluation';
+                        const statusEmoji = {
+                            'excellent': '✨',
+                            'good': '👍',
+                            'needs_improvement': '📚'
+                        };
+                        const emoji = statusEmoji[data.data.status] || '✍️';
+                        evaluationDiv.innerHTML = '<div class="evaluation-header">' + emoji + ' Evaluation</div><div class="evaluation-content">' +
+                                '<div style="margin-bottom: 8px;"><b>' + data.data.short_description + '</b></div>' +
+                                data.data.long_description +
+                                (data.data.correct ? '<div style="margin-top: 8px; color: #2e7d32;"><b>✅ Correct:</b> ' + data.data.correct + '</div>' : '') +
+                            '</div>';
+                        if (userMessageDiv) {
+                            console.log('Appending evaluation to user message');
+                            userMessageDiv.appendChild(evaluationDiv);
+                        } else {
+                            console.error('userMessageDiv not found!');
+                        }
+                        scrollToBottom();
                     } else if (data.content) {
                         if (!messageStarted) {
                             removeTypingIndicator(typingIndicator);
@@ -1810,8 +2088,11 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
             if (role === 'assistant') {
                 translationDiv = document.createElement('div');
                 translationDiv.className = 'message-translation';
-                translationDiv.textContent = translation || '';
                 messageDiv.appendChild(translationDiv);
+                
+                if (content) {
+                    translateMessage(content, translationDiv);
+                }
             }
             
             messagesDiv.appendChild(messageDiv);
@@ -1824,6 +2105,71 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
         function scrollToBottom() {
             const messagesDiv = document.getElementById('chatMessages');
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function useSuggestion(text) {
+            const input = document.getElementById('chatInput');
+            const cleanText = text.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '').trim();
+            input.value = cleanText;
+            input.focus();
+        }
+
+        async function showHint() {
+            if (!sessionActive) return;
+
+            const messagesDiv = document.getElementById('chatMessages');
+            const assistantMessages = messagesDiv.querySelectorAll('.message.assistant');
+            if (assistantMessages.length === 0) return;
+            
+            const lastAssistantMessage = assistantMessages[assistantMessages.length - 1];
+            const messageContent = lastAssistantMessage.querySelector('.message-content');
+            if (!messageContent || !messageContent.textContent) return;
+            
+            const message = messageContent.textContent;
+            
+            const hintBtn = document.getElementById('hintBtn');
+            const originalText = hintBtn.textContent;
+            hintBtn.disabled = true;
+            hintBtn.textContent = '⏳ Loading...';
+
+            try {
+                const response = await fetch('/api/suggestions', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ message: message })
+                });
+                const data = await response.json();
+
+                if (data.success && data.suggestions) {
+                    const existingSuggestions = lastAssistantMessage.querySelector('.message-suggestions');
+                    
+                    if (existingSuggestions) {
+                        existingSuggestions.remove();
+                    }
+
+                    const suggestionsDiv = document.createElement('div');
+                    suggestionsDiv.className = 'message-suggestions';
+                    const options = (data.suggestions.vocab_options || []).map(opt => 
+                        '<div class="suggestion-option" onclick="useSuggestion(this.textContent)">' +
+                        opt.emoji + ' ' + opt.text +
+                        '</div>'
+                    ).join('');
+                    suggestionsDiv.innerHTML = '<div class="suggestions-header">💡 Suggested Responses</div><div class="suggestions-content">' +
+                            (data.suggestions.leading_sentence ? '<div class="suggestion-lead">' + data.suggestions.leading_sentence + '</div>' : '') +
+                            '<div class="suggestion-options">' + options + '</div></div>';
+                    
+                    lastAssistantMessage.appendChild(suggestionsDiv);
+                    scrollToBottom();
+                } else {
+                    showNotification(data.message || 'Failed to get hints', true);
+                }
+            } catch (error) {
+                console.error('Error getting hints:', error);
+                showNotification('Failed to get hints', true);
+            } finally {
+                hintBtn.disabled = false;
+                hintBtn.textContent = originalText;
+            }
         }
 
         init();

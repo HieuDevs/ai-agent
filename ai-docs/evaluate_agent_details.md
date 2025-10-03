@@ -1,15 +1,28 @@
 # EvaluateAgent Detailed Documentation
 
 ## Overview
-EvaluateAgent provides constructive feedback on learner responses by evaluating grammar, vocabulary, sentence structure, and context appropriateness. It helps English learners understand their mistakes and improve their language skills through detailed, encouraging feedback.
+EvaluateAgent provides constructive feedback on learner responses by evaluating **relevance first**, then grammar, vocabulary, sentence structure, and context appropriateness. It helps English learners understand their mistakes and improve their language skills through detailed, encouraging feedback.
 
 ## Purpose
 The agent helps learners by:
+- **PRIORITY:** Checking if response is relevant to AI's message/question
 - Evaluating response quality against level-appropriate standards
 - Identifying grammar, vocabulary, and structural errors
 - Providing constructive, encouraging feedback
 - Offering corrected versions of responses
 - Adapting evaluation criteria to learner's proficiency level
+
+## Critical Evaluation Rule
+**Relevance is the PRIMARY criterion.** If a response doesn't relate to or address the AI's message, it automatically receives "needs_improvement" status, regardless of grammar quality. Irrelevant responses CANNOT be rated as "excellent" or "good".
+
+### Relevance Acceptance (Implicit Answers)
+- Accept implicit yes/no answers that include a preference, detail, or example as relevant.
+- Do NOT require explicit tokens like "Yes/No" to consider a response relevant.
+- Elliptical but clear replies are relevant if they directly imply an answer.
+
+Examples:
+- AI: "Do you like music?" / User: "I like pop music." → Relevant (implicit YES). Evaluate quality, not relevance.
+- AI: "Do you like music?" / User: "Pop music." → Relevant if it clearly implies preference; evaluate quality.
 
 ## Structure
 
@@ -53,8 +66,11 @@ type EvaluationResponse struct {
 **Fields:**
 - `Status` - Evaluation level: "excellent", "good", or "needs_improvement"
 - `ShortDescription` - Brief encouraging feedback (translated to target language)
-- `LongDescription` - Encouragement-only for "excellent"/"good"; detailed corrections with `<b>tags</b>` for "needs_improvement" (translated to target language)
-- `Correct` - Provide correction only for "needs_improvement"; for "excellent"/"good", output the original sentence
+ - `LongDescription` - Encouragement-only for "excellent"/"good" (no tags in this case). For "needs_improvement", provide detailed corrections (translated to target language):
+   - Use `<err>...</err>` to mark error spans in the user's text
+   - Use `<b>...</b>` to highlight correct forms or key points
+   - If there are no errors, do not use any tags
+- `Correct` - Always provides an example response that properly addresses the AI's message (e.g., if AI asked a question, answer it; if AI made a statement, provide an appropriate reply). For "excellent"/"good", shows the user's original (if already good) or a refined version. For "needs_improvement", shows corrected grammar that properly responds to the AI. This field is always in English only.
 
 **Example Response (Vietnamese):**
 ```json
@@ -79,18 +95,21 @@ type EvaluationResponse struct {
 ## Evaluation Levels
 
 ### Excellent ✨
+- **MUST be relevant** to AI's message/question
 - Perfect or near-perfect response with natural English
 - Appropriate grammar and vocabulary for level
 - Clear communication with proper structure
 - No significant errors
 
 ### Good 👍
+- **MUST be relevant** to AI's message/question
 - Solid response that communicates effectively
 - Minor issues that don't impede understanding
 - Most grammar and vocabulary used correctly
 - Room for improvement in specific areas
 
 ### Needs Improvement 📚
+- **Irrelevant/off-topic response** (regardless of grammar quality) **OR**
 - Noticeable errors affecting clarity or naturalness
 - Grammar, vocabulary, or structural issues
 - Communication is impeded
@@ -148,19 +167,25 @@ func (ea *EvaluateAgent) generateEvaluation(task models.JobRequest) *models.JobR
 **Process:**
 1. Extract user message and AI's previous message from task
 2. Build system prompt based on level (evaluation criteria and guidelines)
-3. Create user prompt with both messages and context
+3. Create user prompt with both messages and context (with 2-step evaluation instructions)
 4. Build JSON Schema for structured output (OpenRouter format)
 5. Call LLM with `ChatCompletionWithFormat` using strict JSON schema
 6. Return validated JSON response
 
 **Prompt Structure:**
-- System: Level-specific evaluation criteria and guidelines
+- System: Level-specific evaluation criteria and guidelines with **relevance-first priority**
 - User: User's response + AI's question/context + topic + level + language
+- **Evaluation Instructions:** 
+  - **STEP 1:** Check relevance first (is response related to AI's message?)
+  - Accept implicit yes/no answers (with details/preferences) as relevant; do not require explicit "Yes/No".
+  - **STEP 2:** Evaluate quality only if relevant (grammar, vocabulary, structure)
+  - In feedback: wrap errors with `<err>...</err>` and use `<b>...</b>` for highlights; if no errors, use no tags
 
 **Implementation Notes:**
 - Uses OpenRouter's [Structured Outputs](https://openrouter.ai/docs/features/structured-outputs) feature
 - JSON schema enforces exact format with `strict: true`
 - Guarantees valid JSON response without parsing errors
+- **Relevance is the PRIMARY criterion** - irrelevant = needs_improvement (regardless of grammar)
 - Feedback translated to target language for better understanding
 - Lower temperature (0.3) ensures consistent evaluation
 
@@ -185,57 +210,63 @@ func (ea *EvaluateAgent) buildEvaluatePrompt() string
 
 #### Beginner
 - **Style:** Very forgiving, focus on encouragement
+- **FIRST CHECK:** Is it relevant to AI's message?
 - **Criteria:**
-  - Excellent: Simple, clear sentence with correct basic grammar
-  - Good: Communicates idea despite minor errors (articles, plurals)
-  - Needs Improvement: Major verb errors or incomprehensible meaning
+  - Excellent: **Relevant** AND simple, clear sentence with correct basic grammar
+  - Good: **Relevant** AND communicates idea despite minor errors (articles, plurals)
+  - Needs Improvement: **Irrelevant** OR major verb errors or incomprehensible meaning
 - **Focus:** 1-2 key improvements, very simple explanations
-- **Approach:** Praise effort and basic communication
+- **Approach:** Check relevance first, then praise effort and basic communication
 
 #### Elementary
 - **Style:** Encouraging but attentive to basic patterns
+- **FIRST CHECK:** Is it relevant to AI's message?
 - **Criteria:**
-  - Excellent: Clear sentences with correct basic tenses and structure
-  - Good: Mostly correct with minor tense or article issues
-  - Needs Improvement: Incorrect tense usage or confusing structure
+  - Excellent: **Relevant** AND clear sentences with correct basic tenses and structure
+  - Good: **Relevant** AND mostly correct with minor tense or article issues
+  - Needs Improvement: **Irrelevant** OR incorrect tense usage or confusing structure
 - **Focus:** 2-3 improvement areas with clear examples
-- **Approach:** Check basic sentence structure (SVO), simple past/present tenses
+- **Approach:** Check relevance first, then basic sentence structure (SVO), simple past/present tenses
 
 #### Intermediate
 - **Style:** Balanced - encourage progress while addressing errors
+- **FIRST CHECK:** Is it relevant to AI's message?
 - **Criteria:**
-  - Excellent: Natural expression with varied structures and appropriate vocabulary
-  - Good: Good communication with some preposition/collocation issues
-  - Needs Improvement: Multiple grammar errors or awkward phrasing affecting clarity
+  - Excellent: **Relevant** AND natural expression with varied structures and appropriate vocabulary
+  - Good: **Relevant** AND good communication with some preposition/collocation issues
+  - Needs Improvement: **Irrelevant** OR multiple grammar errors or awkward phrasing affecting clarity
 - **Focus:** 3-4 improvement areas with explanations
-- **Approach:** Expect varied sentence structures and appropriate vocabulary
+- **Approach:** Check relevance first, then expect varied sentence structures and appropriate vocabulary
 
 #### Upper Intermediate
 - **Style:** Higher standards - expect natural expression
+- **FIRST CHECK:** Is it relevant to AI's message?
 - **Criteria:**
-  - Excellent: Sophisticated expression with natural flow and precise vocabulary
-  - Good: Strong communication with minor style or collocation issues
-  - Needs Improvement: Unnatural phrasing, wrong collocations, or grammar mistakes
+  - Excellent: **Relevant** AND sophisticated expression with natural flow and precise vocabulary
+  - Good: **Relevant** AND strong communication with minor style or collocation issues
+  - Needs Improvement: **Irrelevant** OR unnatural phrasing, wrong collocations, or grammar mistakes
 - **Focus:** 4-5 improvement areas with nuance explanations
-- **Approach:** Check complex structures, advanced vocabulary, subtle grammar
+- **Approach:** Check relevance first, then complex structures, advanced vocabulary, subtle grammar
 
 #### Advanced
 - **Style:** Near-native standards expected
+- **FIRST CHECK:** Is it relevant to AI's message?
 - **Criteria:**
-  - Excellent: Native-like expression with idioms and natural collocations
-  - Good: Very good with minor non-native patterns
-  - Needs Improvement: Unnatural collocations or inappropriate register
+  - Excellent: **Relevant** AND native-like expression with idioms and natural collocations
+  - Good: **Relevant** AND very good with minor non-native patterns
+  - Needs Improvement: **Irrelevant** OR unnatural collocations or inappropriate register
 - **Focus:** Subtle improvements and sophisticated alternatives
-- **Approach:** Expect idiomatic expressions, natural collocations, appropriate register
+- **Approach:** Check relevance first, then expect idiomatic expressions, natural collocations, appropriate register
 
 #### Fluent
 - **Style:** Native-level standards
+- **FIRST CHECK:** Is it relevant to AI's message?
 - **Criteria:**
-  - Excellent: Indistinguishable from native speaker with elegant expression
-  - Good: Nearly native with very subtle non-native elements
-  - Needs Improvement: Noticeable non-native patterns or style issues
+  - Excellent: **Relevant** AND indistinguishable from native speaker with elegant expression
+  - Good: **Relevant** AND nearly native with very subtle non-native elements
+  - Needs Improvement: **Irrelevant** OR noticeable non-native patterns or style issues
 - **Focus:** Refinements, sophistication, and elegance
-- **Approach:** Expect completely natural expression with subtle style nuances
+- **Approach:** Check relevance first, then expect completely natural expression with subtle style nuances
 
 ### 4. DisplayEvaluation
 Formats and displays evaluation in terminal.
@@ -468,6 +499,7 @@ if level <= models.ConversationLevelIntermediate {
 - Use visual separators for readability
 - Show corrected version prominently
 - Keep feedback encouraging and constructive
+- In explanations: wrap error spans with `<err>...</err>` and use `<b>...</b>` for highlights; if no errors, use no tags
 
 ## Testing Considerations
 
@@ -604,6 +636,12 @@ evaluate_agent:
     Level: {level}
     Target Language: {language}
     
+    Return:
+    1) status (excellent|good|needs_improvement)
+    2) short_description (in {language})
+    3) long_description (in {language})
+    4) correct (English only, never translate)
+    
   level_guidelines:
     beginner:
       name: "Beginner"
@@ -619,6 +657,14 @@ evaluate_agent:
     - "Always be encouraging and constructive"
     - "Highlight what was done well before errors"
     # ... other principles
+    - "Accept implicit yes/no answers with details as relevant; do not require explicit 'Yes/No'"
+    - "'correct' must be strictly in English only"
+
+## Clarification for Music Preference Scenario
+If AI asks: "Do you like music?" and the user replies: "I like pop music."
+- This is considered **relevant** (implicit YES with detail).
+- Do not mark as irrelevant due to missing explicit "Yes".
+- The `correct` example must be in English, e.g., "Yes, I like pop music!"
 ```
 
 ### Tunable Parameters
@@ -633,8 +679,8 @@ stream: false                 // Direct response, not streaming
 ### Language Support
 The agent supports multi-language feedback:
 - **Short description**: Translated to target language
-- **Long description**: Translated to target language with `<b>tags</b>` preserved
-- **Corrected sentence**: Always in English (for learning purposes)
+- **Long description**: Translated to target language with `<b>...</b>` highlights and `<err>...</err>` error tags preserved
+- **Example response (correct field)**: Always in English, shows how to properly respond to the AI's message (e.g., answers questions, replies to statements)
 - **Placeholder**: `{language}` in templates is replaced with actual language
 
 **Supported Languages (configurable):**

@@ -119,7 +119,7 @@ func (ea *EvaluateAgent) generateEvaluation(task models.JobRequest) *models.JobR
 	}
 
 	utils.PrintInfo(fmt.Sprintf("Evaluating user message: %s", userMessage))
-
+	utils.PrintInfo(fmt.Sprintf("Last AI message: %s", lastAIMessage))
 	systemPrompt := ea.buildEvaluatePrompt()
 	userPrompt := ea.buildUserPrompt(userMessage, lastAIMessage)
 
@@ -279,11 +279,11 @@ func (ea *EvaluateAgent) buildResponseFormat() *models.ResponseFormat {
 			},
 			"long_description": map[string]any{
 				"type":        "string",
-				"description": "Detailed analysis with <b>tags</b> highlighting specific errors or good usage",
+				"description": "Detailed analysis: use <err>...</err> to mark errors and <b>...</b> to highlight correct forms or key points; if there are no errors, use no tags",
 			},
 			"correct": map[string]any{
 				"type":        "string",
-				"description": "The corrected version of the sentence in English (or original if already perfect)",
+				"description": "The corrected version strictly in English only (or original if already perfect)",
 			},
 		},
 		"required":             []string{"status", "short_description", "long_description", "correct"},
