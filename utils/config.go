@@ -8,10 +8,62 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-var imMemCache = make(map[string]PromptConfig)
+var conversationPromptMemCache = make(map[string]PromptConfig)
+var suggestionPromptMemCache *SuggestionPromptConfig
+var evaluatePromptMemCache *EvaluatePromptConfig
 
 type PromptConfig struct {
 	ConversationLevels map[string]LevelConfig `yaml:"conversation_levels"`
+}
+
+type SuggestionPromptConfig struct {
+	SuggestionAgent SuggestionAgentConfig `yaml:"suggestion_agent"`
+}
+
+type SuggestionAgentConfig struct {
+	LLM                LLMSettings                     `yaml:"llm"`
+	BasePrompt         string                          `yaml:"base_prompt"`
+	UserPromptTemplate string                          `yaml:"user_prompt_template"`
+	LevelGuidelines    map[string]LevelGuidelineConfig `yaml:"level_guidelines"`
+	KeyPrinciples      []string                        `yaml:"key_principles"`
+}
+
+type LevelGuidelineConfig struct {
+	Name           string               `yaml:"name"`
+	Description    string               `yaml:"description"`
+	Guidelines     []string             `yaml:"guidelines"`
+	ExampleLeading string               `yaml:"example_leading"`
+	ExampleOptions []VocabOptionExample `yaml:"example_options"`
+}
+
+type VocabOptionExample struct {
+	Text  string `yaml:"text"`
+	Emoji string `yaml:"emoji"`
+}
+
+type EvaluatePromptConfig struct {
+	EvaluateAgent EvaluateAgentConfig `yaml:"evaluate_agent"`
+}
+
+type EvaluateAgentConfig struct {
+	LLM                LLMSettings                    `yaml:"llm"`
+	BasePrompt         string                         `yaml:"base_prompt"`
+	UserPromptTemplate string                         `yaml:"user_prompt_template"`
+	LevelGuidelines    map[string]EvaluateLevelConfig `yaml:"level_guidelines"`
+	KeyPrinciples      []string                       `yaml:"key_principles"`
+}
+
+type EvaluateLevelConfig struct {
+	Name        string                 `yaml:"name"`
+	Description string                 `yaml:"description"`
+	Guidelines  []string               `yaml:"guidelines"`
+	Criteria    EvaluateCriteriaConfig `yaml:"criteria"`
+}
+
+type EvaluateCriteriaConfig struct {
+	Excellent        string `yaml:"excellent"`
+	Good             string `yaml:"good"`
+	NeedsImprovement string `yaml:"needs_improvement"`
 }
 
 type LLMSettings struct {
@@ -47,15 +99,15 @@ func loadPromptsConfig(path string) (*PromptConfig, error) {
 }
 
 func GetFullPrompt(path string, level string, promptType string) (string, string, string, error) {
-	if _, exists := imMemCache[path]; !exists {
+	if _, exists := conversationPromptMemCache[path]; !exists {
 		prompts, err := loadPromptsConfig(path)
 		if err != nil {
 			return "", "", "", fmt.Errorf("failed to load prompts config: %w", err)
 		}
-		imMemCache[path] = *prompts
+		conversationPromptMemCache[path] = *prompts
 	}
 
-	levelConfig, exists := imMemCache[path].ConversationLevels[level]
+	levelConfig, exists := conversationPromptMemCache[path].ConversationLevels[level]
 	if !exists {
 		return "", "", "", fmt.Errorf("conversation level '%s' not found", level)
 	}
@@ -64,6 +116,7 @@ func GetFullPrompt(path string, level string, promptType string) (string, string
 	switch promptType {
 	case "starter":
 		content = levelConfig.Starter
+		return levelConfig.Role, levelConfig.Personality, content, nil
 	case "conversational":
 		content = levelConfig.Conversational
 	default:
@@ -77,15 +130,15 @@ func GetFullPrompt(path string, level string, promptType string) (string, string
 }
 
 func GetLLMSettingsFromLevel(path string, level string) (string, float64, int) {
-	if _, exists := imMemCache[path]; !exists {
+	if _, exists := conversationPromptMemCache[path]; !exists {
 		prompts, err := loadPromptsConfig(path)
 		if err != nil {
 			return "openai/gpt-4o-mini", 0.7, 1000
 		}
-		imMemCache[path] = *prompts
+		conversationPromptMemCache[path] = *prompts
 	}
 
-	levelConfig, exists := imMemCache[path].ConversationLevels[level]
+	levelConfig, exists := conversationPromptMemCache[path].ConversationLevels[level]
 	if !exists {
 		return "openai/gpt-4o-mini", 0.7, 1000
 	}
@@ -113,4 +166,52 @@ func GetPromptsDir() string {
 	dir, _ := os.Getwd()
 	filePath := filepath.Join(dir, "prompts")
 	return filePath
+}
+
+func LoadSuggestionConfig() (*SuggestionPromptConfig, error) {
+	if suggestionPromptMemCache != nil {
+		return suggestionPromptMemCache, nil
+	}
+
+	path := filepath.Join(GetPromptsDir(), "_suggestion_vocab_prompt.yaml")
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return nil, fmt.Errorf("suggestion config file not found: %s", path)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read suggestion config file: %w", err)
+	}
+
+	var config SuggestionPromptConfig
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse suggestion YAML config: %w", err)
+	}
+
+	suggestionPromptMemCache = &config
+	return suggestionPromptMemCache, nil
+}
+
+func LoadEvaluateConfig() (*EvaluatePromptConfig, error) {
+	if evaluatePromptMemCache != nil {
+		return evaluatePromptMemCache, nil
+	}
+
+	path := filepath.Join(GetPromptsDir(), "_evaluate_prompt.yaml")
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return nil, fmt.Errorf("evaluate config file not found: %s", path)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read evaluate config file: %w", err)
+	}
+
+	var config EvaluatePromptConfig
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse evaluate YAML config: %w", err)
+	}
+
+	evaluatePromptMemCache = &config
+	return evaluatePromptMemCache, nil
 }

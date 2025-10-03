@@ -1,0 +1,125 @@
+---
+alwaysApply: true
+---
+
+# AI Agent System - Key Components
+
+## Core Architecture
+
+### Agents System (`work-flows/agents/`)
+- **ConversationAgent**: Main conversation handler with streaming responses
+- **SuggestionAgent**: Vocabulary suggestions with OpenRouter Structured Outputs
+- **ChatbotOrchestrator**: CLI interface for terminal-based conversations
+- **ChatbotWeb**: Web interface with full HTML/CSS/JS embedded
+- **AgentManager**: Central agent registry and task router
+- **EvaluateAgent**: Placeholder for future evaluation features
+
+### Client Layer (`work-flows/client/`)
+- **Client interface**: Defines LLM communication methods
+  - `ChatCompletionStream()`: Streaming responses for real-time output
+  - `ChatCompletion()`: Direct non-streaming responses
+  - `ChatCompletionWithFormat()`: Structured outputs with JSON schema validation
+- **OpenRouterClient**: Implementation for OpenRouter API with structured outputs support
+
+### Models (`work-flows/models/`)
+- **Message types**: Role-based message structure (user/assistant/system)
+- **ConversationLevel**: 6 proficiency levels (beginner → fluent)
+- **JobRequest/JobResponse**: Task processing structures
+- **ResponseFormat**: OpenRouter structured outputs configuration
+- **JSONSchemaSpec**: JSON schema validation for type-safe responses
+
+## SuggestionAgent Implementation
+
+### Key Features
+- Uses OpenRouter Structured Outputs (https://openrouter.ai/docs/features/structured-outputs)
+- JSON Schema with strict validation
+- Emoji-enhanced vocabulary options
+- Context-aware suggestions based on AI's last message
+- Level-adaptive prompts (creative and flexible)
+- Guaranteed valid JSON responses (no parsing errors)
+
+### Response Structure
+```go
+type SuggestionResponse struct {
+    LeadingSentence string        `json:"leading_sentence"`
+    VocabOptions    []VocabOption `json:"vocab_options"`
+}
+
+type VocabOption struct {
+    Text  string `json:"text"`  // Vocabulary phrase
+    Emoji string `json:"emoji"` // Relevant emoji
+}
+```
+
+### Integration Points
+- Registered in AgentManager
+- Called after every AI response in ChatbotOrchestrator
+- Displays suggestions with emojis in terminal
+- Ready for web integration (endpoint structure documented)
+
+## Documentation (`ai-docs/`)
+- **agents_overview.md**: Complete system architecture
+- **chatbot_web_details.md**: Web interface documentation
+- **conversation_agent_details.md**: Conversation agent details
+- **suggestion_agent_details.md**: Full SuggestionAgent implementation guide
+
+## Prompt System (`prompts/`)
+- YAML-based configuration per topic
+- Level-specific prompts (starter, conversational, evaluation)
+- LLM settings per level (model, temperature, max_tokens)
+- Dynamic loading and validation
+
+## Important Design Decisions
+
+1. **Structured Outputs over Prompt Engineering**: Using OpenRouter's JSON schema validation ensures type-safe, parseable responses without retry logic
+
+2. **Streaming vs Non-Streaming**: 
+   - ConversationAgent: Streaming for better UX on long responses
+   - SuggestionAgent: Non-streaming with structured format for immediate validated results
+
+3. **Emoji Integration**: Emojis are part of the JSON schema, ensuring consistent formatting and visual enhancement
+
+4. **Level-Adaptive Prompts**: Each of 6 levels has specific guidelines for vocabulary complexity, sentence structure, and response style
+
+5. **Context-Aware Suggestions**: Suggestions are based on AI's last message, not user's input, to guide learners on how to respond
+
+## Documentation Update Policy
+
+**CRITICAL RULE**: Always update related documentation files in `ai-docs/` when editing source files.
+
+### Documentation Mapping:
+- **SuggestionAgent** (`work-flows/agents/suggestion_agent.go`) → Update `ai-docs/suggestion_agent_details.md`
+- **ConversationAgent** (`work-flows/agents/conversation_agent.go`) → Update `ai-docs/conversation_agent_details.md`
+- **ChatbotWeb** (`work-flows/agents/chatbot_web.go`) → Update `ai-docs/chatbot_web_details.md`
+- **AgentManager** (`work-flows/agents/manager.go`) → Update `ai-docs/agents_overview.md`
+- **Configuration changes** (`prompts/*.yaml`, `utils/config.go`) → Update relevant agent documentation
+
+### When to Update Documentation:
+1. When adding/removing struct fields
+2. When changing function signatures
+3. When adding/removing methods
+4. When changing configuration structure
+5. When adding new features or capabilities
+6. When changing integration points
+7. When modifying prompt templates or YAML configs
+
+### Update Process:
+1. Make code changes
+2. Immediately update corresponding documentation
+3. Ensure examples reflect current implementation
+4. Update feature status (✅ Implemented, ⏳ Pending)
+5. Add new sections for new features
+6. Mark deprecated features clearly
+
+**DO NOT**: Skip documentation updates or say "I'll update it later"
+**ALWAYS**: Update documentation in the same response as code changes
+
+## Recent Updates
+
+- Added OpenRouter Structured Outputs support
+- Implemented SuggestionAgent with emoji-enhanced vocabulary
+- Created comprehensive documentation in ai-docs/
+- Integrated suggestions into CLI workflow
+- Updated client layer to support response_format parameter
+- Added multi-language support with YAML configuration
+- Externalized all SuggestionAgent prompts to `_suggestion_vocab_prompt.yaml`

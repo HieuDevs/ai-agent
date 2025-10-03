@@ -12,7 +12,7 @@ import (
 	"ai-agent/work-flows/services"
 )
 
-func getLevelSpecificPrompt(path string, level models.ConversationLevel, promptType string) string {
+func GetLevelSpecificPrompt(path string, level models.ConversationLevel, promptType string) string {
 	_, _, fullPrompt, err := utils.GetFullPrompt(path, string(level), promptType)
 	if err != nil {
 		utils.PrintError(fmt.Sprintf("Error loading prompt for level %s, type %s: %v", level, promptType, err))
@@ -95,15 +95,16 @@ func (ca *ConversationAgent) ProcessTask(task models.JobRequest) *models.JobResp
 func (ca *ConversationAgent) generateConversationStarter() *models.JobResponse {
 	// Get starter message from prompt
 	pathPrompts := filepath.Join(utils.GetPromptsDir(), ca.Topic+"_prompt.yaml")
-	starterMessage := getLevelSpecificPrompt(pathPrompts, ca.level, "starter")
+	starterMessage := GetLevelSpecificPrompt(pathPrompts, ca.level, "starter")
 
 	ca.addToHistory(models.MessageRoleAssistant, starterMessage)
-
-	return &models.JobResponse{
+	response := &models.JobResponse{
 		AgentName: ca.Name(),
 		Success:   true,
 		Result:    starterMessage,
 	}
+	fmt.Println("💬 Starter message: ", starterMessage)
+	return response
 }
 
 func (ca *ConversationAgent) generateConversationalResponse(
@@ -117,7 +118,7 @@ func (ca *ConversationAgent) generateConversationalResponse(
 		conversationLevel = task.Level
 	}
 	pathPrompts := filepath.Join(utils.GetPromptsDir(), ca.Topic+"_prompt.yaml")
-	levelPrompt := getLevelSpecificPrompt(pathPrompts, conversationLevel, "conversational")
+	levelPrompt := GetLevelSpecificPrompt(pathPrompts, conversationLevel, "conversational")
 
 	messages := []models.Message{
 		{
@@ -180,6 +181,34 @@ func (ca *ConversationAgent) ResetConversation() {
 	utils.PrintSuccess("Conversation history reset")
 }
 
+func (ca *ConversationAgent) GetClient() client.Client {
+	return ca.client
+}
+
+func (ca *ConversationAgent) GetModel() string {
+	return ca.model
+}
+
+func (ca *ConversationAgent) GetTemperature() float64 {
+	return ca.temperature
+}
+
+func (ca *ConversationAgent) GetMaxTokens() int {
+	return ca.maxTokens
+}
+
+func (ca *ConversationAgent) GetTopic() string {
+	return ca.Topic
+}
+
+func (ca *ConversationAgent) GetConversationHistory() []models.Message {
+	return ca.conversationHistory
+}
+
+func (ca *ConversationAgent) SetConversationHistory(history []models.Message) {
+	ca.conversationHistory = history
+}
+
 func (ca *ConversationAgent) SetLevel(level models.ConversationLevel) {
 	if !models.IsValidConversationLevel(string(level)) {
 		utils.PrintError(fmt.Sprintf("Invalid conversation level: %s", level))
@@ -236,10 +265,6 @@ func (ca *ConversationAgent) countMessagesByRole(role models.MessageRole) int {
 		}
 	}
 	return count
-}
-
-func (ca *ConversationAgent) GetFullConversationHistory() []models.Message {
-	return ca.conversationHistory
 }
 
 func (ca *ConversationAgent) showVietnameseTranslation(text string) {

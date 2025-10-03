@@ -8,7 +8,7 @@ conversation_levels:
       temperature: 0.2
       max_tokens: 250
     starter: |
-      Hi! Do you like sports?
+      Hi! Do you like music?
     conversational: |
       Always respond in English. Have natural, friendly conversations:
       - Respond naturally to what they say
@@ -26,7 +26,7 @@ conversation_levels:
       temperature: 0.2
       max_tokens: 250
     starter: |
-      Did you watch any sports this weekend?
+      What kind of music have you been listening to lately?
     conversational: |
       Always respond in English. Engage in natural conversation:
       - React genuinely to what they share
@@ -44,7 +44,7 @@ conversation_levels:
       temperature: 0.2
       max_tokens: 250
     starter: |
-      Have you ever tried a sport that completely changed your perspective on teamwork?
+      What interests you most about music?
     conversational: |
       Always respond in English. Have meaningful conversations:
       - Respond thoughtfully to their ideas
@@ -62,7 +62,7 @@ conversation_levels:
       temperature: 0.2
       max_tokens: 280
     starter: |
-      What do you believe constitutes true athletic excellence in our contemporary society?
+      How do you think music shapes our emotional and cultural identity?
     conversational: |
       Always respond in English. Engage in sophisticated dialogue:
       - Respond to their ideas with intellectual depth
@@ -80,7 +80,7 @@ conversation_levels:
       temperature: 0.2
       max_tokens: 280
     starter: |
-      What athletic experience, if any, fundamentally altered your understanding of human resilience?
+      What musical experience, if any, fundamentally transformed your perception of sound and emotion?
     conversational: |
       Always respond in English. Engage in refined dialogue:
       - Respond with eloquence and depth
@@ -98,7 +98,7 @@ conversation_levels:
       temperature: 0.2
       max_tokens: 280
     starter: |
-      Which sporting experience most profoundly shifted your fundamental perceptions?
+      Which musical moment most profoundly altered your understanding of artistic expression?
     conversational: |
       Always respond in English. Converse as equals:
       - Respond authentically and naturally

@@ -1,10 +1,11 @@
-package agents
+package managers
 
 import (
 	"fmt"
 	"strings"
 
 	"ai-agent/utils"
+	"ai-agent/work-flows/agents"
 	"ai-agent/work-flows/client"
 	"ai-agent/work-flows/models"
 
@@ -17,7 +18,7 @@ type AgentManager struct {
 	currentJob *models.JobRequest
 }
 
-func NewManager(apiKey string, level models.ConversationLevel, topic string) *AgentManager {
+func NewManager(apiKey string, level models.ConversationLevel, topic string, language string) *AgentManager {
 	client := client.NewOpenRouterClient(apiKey)
 
 	manager := &AgentManager{
@@ -25,14 +26,18 @@ func NewManager(apiKey string, level models.ConversationLevel, topic string) *Ag
 		agents:    make(map[string]models.Agent),
 	}
 
-	manager.RegisterAgents(level, topic)
+	manager.RegisterAgents(level, topic, language)
 	return manager
 }
 
-func (m *AgentManager) RegisterAgents(level models.ConversationLevel, topic string) {
-	conversationAgent := NewConversationAgent(m.apiClient, level, topic)
+func (m *AgentManager) RegisterAgents(level models.ConversationLevel, topic string, language string) {
+	conversationAgent := agents.NewConversationAgent(m.apiClient, level, topic)
+	suggestionAgent := agents.NewSuggestionAgent(m.apiClient, level, topic, language)
+	evaluateAgent := agents.NewEvaluateAgent(m.apiClient, level, topic, language)
 
 	m.agents[conversationAgent.Name()] = conversationAgent
+	m.agents[suggestionAgent.Name()] = suggestionAgent
+	m.agents[evaluateAgent.Name()] = evaluateAgent
 
 	utils.PrintSuccess("Agent Manager initialized with agents:")
 	for _, agent := range m.agents {
@@ -66,6 +71,14 @@ func (m *AgentManager) ListAgents() {
 func (m *AgentManager) GetAgent(name string) (models.Agent, bool) {
 	agent, exists := m.agents[name]
 	return agent, exists
+}
+
+func (m *AgentManager) GetConversationAgent() *agents.ConversationAgent {
+	agent, exists := m.GetAgent("ConversationAgent")
+	if !exists {
+		return nil
+	}
+	return agent.(*agents.ConversationAgent)
 }
 
 func (m *AgentManager) ProcessJob(job models.JobRequest) *models.JobResponse {

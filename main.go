@@ -2,9 +2,10 @@ package main
 
 import (
 	"ai-agent/utils"
-	workflows "ai-agent/work-flows/agents"
+	"ai-agent/work-flows/gateway"
 	"ai-agent/work-flows/models"
 	"bufio"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -39,17 +40,61 @@ func runEnglishChatbot(apiKey string) {
 
 	yellow.Println("\n🎯 Starting English Conversation Chatbot...")
 
-	topic := getUserInput("sports")
-	level := getConversationLevel()
+	useGUI := getInterfaceChoice()
 
-	green.Printf("🚀 Launching chatbot with topic: %s, level: %s\n\n", topic, level)
-
-	runChatbotWithTopic(apiKey, models.ConversationLevel(level), topic)
+	if useGUI {
+		green.Println("🚀 Starting Web UI server...")
+		green.Println("📋 You can select topic and level in the browser")
+		fmt.Println()
+		runChatbotWebUI(apiKey)
+	} else {
+		topic := getUserInput("sports")
+		level := getConversationLevel()
+		language := getLanguage()
+		green.Printf("🚀 Launching chatbot with topic: %s, level: %s, language: %s\n\n", topic, level, language)
+		runChatbotWithTopic(apiKey, models.ConversationLevel(level), topic, language)
+	}
 }
 
-func runChatbotWithTopic(apiKey string, level models.ConversationLevel, topic string) {
-	chatbot := workflows.NewChatbotOrchestrator(apiKey, level, topic)
+func runChatbotWithTopic(apiKey string, level models.ConversationLevel, topic string, language string) {
+	chatbot := gateway.NewChatbotOrchestrator(apiKey, level, topic, language)
 	chatbot.StartConversation()
+}
+
+func runChatbotWebUI(apiKey string) {
+	chatbot := gateway.NewChatbotWeb(apiKey)
+	chatbot.StartWebServer("8080")
+}
+
+func getInterfaceChoice() bool {
+	blue := color.New(color.FgCyan)
+	yellow := color.New(color.FgYellow)
+	green := color.New(color.FgGreen)
+
+	blue.Println("\n🖥️  Choose your interface:")
+	blue.Println("1. Web UI (Browser Interface)")
+	blue.Println("2. CLI (Command Line Interface)")
+
+	reader := bufio.NewReader(os.Stdin)
+
+	for {
+		green.Print("Enter your choice (1-2, default: Web UI): ")
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(input)
+
+		if input == "" || input == "1" {
+			yellow.Println("Using Web UI interface")
+			return true
+		}
+
+		if input == "2" {
+			yellow.Println("Using CLI interface")
+			return false
+		}
+
+		red := color.New(color.FgRed)
+		red.Println("Invalid input. Please enter 1 for Web UI or 2 for CLI.")
+	}
 }
 
 func getAvailableTopics() []string {
@@ -173,5 +218,74 @@ func getConversationLevel() string {
 
 		red := color.New(color.FgRed)
 		red.Println("Invalid input. Please enter a number (1-6) or the level name.")
+	}
+}
+
+func getLanguage() string {
+	green := color.New(color.FgGreen)
+	blue := color.New(color.FgCyan)
+	yellow := color.New(color.FgYellow)
+
+	languages := []string{
+		"Vietnamese",
+		"English",
+		"Spanish",
+		"French",
+		"German",
+		"Japanese",
+		"Korean",
+		"Chinese",
+	}
+
+	blue.Println("\nSelect your preferred language for instructions:")
+	for i, lang := range languages {
+		blue.Printf("%d. %s\n", i+1, lang)
+	}
+
+	reader := bufio.NewReader(os.Stdin)
+
+	for {
+		green.Print("Enter your language (1-8, default: Vietnamese): ")
+		input, _ := reader.ReadString('\n')
+		input = strings.TrimSpace(input)
+
+		if input == "" {
+			yellow.Println("Using default language: Vietnamese")
+			return "Vietnamese"
+		}
+
+		if input == "1" {
+			return languages[0]
+		}
+		if input == "2" {
+			return languages[1]
+		}
+		if input == "3" {
+			return languages[2]
+		}
+		if input == "4" {
+			return languages[3]
+		}
+		if input == "5" {
+			return languages[4]
+		}
+		if input == "6" {
+			return languages[5]
+		}
+		if input == "7" {
+			return languages[6]
+		}
+		if input == "8" {
+			return languages[7]
+		}
+
+		for _, lang := range languages {
+			if strings.EqualFold(input, lang) {
+				return lang
+			}
+		}
+
+		red := color.New(color.FgRed)
+		red.Println("Invalid input. Please enter a number (1-8) or the language name.")
 	}
 }

@@ -99,3 +99,92 @@ func (oc *openRouterClient) ChatCompletionStream(model string, temperature float
 		}
 	}
 }
+
+func (oc *openRouterClient) ChatCompletion(model string, temperature float64, maxTokens int, messages []models.Message) (string, error) {
+	reqBody := models.ChatRequest{
+		Model:       model,
+		Messages:    messages,
+		Temperature: temperature,
+		MaxTokens:   maxTokens,
+		Stream:      false,
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", oc.baseURL+"/chat/completions", strings.NewReader(string(jsonData)))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+oc.apiKey)
+	req.Header.Set("Content-Type", ContentTypeHeader)
+
+	resp, err := oc.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("API request failed with status %d", resp.StatusCode)
+	}
+
+	var chatResp models.ChatResponse
+	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
+		return "", fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if len(chatResp.Choices) == 0 {
+		return "", fmt.Errorf("no response from API")
+	}
+
+	return chatResp.Choices[0].Message.Content, nil
+}
+
+func (oc *openRouterClient) ChatCompletionWithFormat(model string, temperature float64, maxTokens int, messages []models.Message, responseFormat *models.ResponseFormat) (string, error) {
+	reqBody := models.ChatRequest{
+		Model:          model,
+		Messages:       messages,
+		Temperature:    temperature,
+		MaxTokens:      maxTokens,
+		Stream:         false,
+		ResponseFormat: responseFormat,
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", oc.baseURL+"/chat/completions", strings.NewReader(string(jsonData)))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+oc.apiKey)
+	req.Header.Set("Content-Type", ContentTypeHeader)
+
+	resp, err := oc.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("API request failed with status %d", resp.StatusCode)
+	}
+
+	var chatResp models.ChatResponse
+	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
+		return "", fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if len(chatResp.Choices) == 0 {
+		return "", fmt.Errorf("no response from API")
+	}
+
+	return chatResp.Choices[0].Message.Content, nil
+}

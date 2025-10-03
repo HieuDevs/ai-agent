@@ -46,10 +46,11 @@ func IsValidConversationLevel(level string) bool {
 }
 
 type JobRequest struct {
-	Task        string            `json:"task"`
-	UserMessage string            `json:"user_message"`
-	Level       ConversationLevel `json:"level,omitempty"`
-	Metadata    any               `json:"metadata"`
+	Task          string            `json:"task"`
+	UserMessage   string            `json:"user_message"`
+	LastAIMessage string            `json:"last_ai_message"`
+	Level         ConversationLevel `json:"level,omitempty"`
+	Metadata      any               `json:"metadata"`
 }
 
 type JobResponse struct {
@@ -60,19 +61,31 @@ type JobResponse struct {
 	Metadata  any    `json:"metadata,omitempty"`
 }
 
+type ResponseFormat struct {
+	Type       string          `json:"type"`
+	JSONSchema *JSONSchemaSpec `json:"json_schema,omitempty"`
+}
+
+type JSONSchemaSpec struct {
+	Name   string                 `json:"name"`
+	Strict bool                   `json:"strict"`
+	Schema map[string]interface{} `json:"schema"`
+}
+
 type ChatRequest struct {
 	Model     string   `json:"model"`
-	Models    []string `json:"models"`
+	Models    []string `json:"models,omitempty"`
 	Providers struct {
 		Sort string `json:"sort"`
-	} `json:"providers"`
+	} `json:"providers,omitempty"`
 	Usage struct {
 		Include bool `json:"include"`
-	} `json:"usage"`
-	Messages    []Message `json:"messages"`
-	Temperature float64   `json:"temperature"`
-	MaxTokens   int       `json:"max_tokens"`
-	Stream      bool      `json:"stream"`
+	} `json:"usage,omitempty"`
+	Messages       []Message       `json:"messages"`
+	Temperature    float64         `json:"temperature"`
+	MaxTokens      int             `json:"max_tokens"`
+	Stream         bool            `json:"stream"`
+	ResponseFormat *ResponseFormat `json:"response_format,omitempty"`
 }
 
 type ChatResponse struct {

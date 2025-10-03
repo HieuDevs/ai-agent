@@ -1,4 +1,4 @@
-package agents
+package gateway
 
 import (
 	"bufio"
@@ -7,18 +7,20 @@ import (
 	"strings"
 
 	"ai-agent/utils"
+	"ai-agent/work-flows/agents"
+	"ai-agent/work-flows/managers"
 	"ai-agent/work-flows/models"
 
 	"github.com/fatih/color"
 )
 
 type ChatbotOrchestrator struct {
-	manager       *AgentManager
+	manager       *managers.AgentManager
 	sessionActive bool
 }
 
-func NewChatbotOrchestrator(apiKey string, level models.ConversationLevel, topic string) *ChatbotOrchestrator {
-	manager := NewManager(apiKey, level, topic)
+func NewChatbotOrchestrator(apiKey string, level models.ConversationLevel, topic string, language string) *ChatbotOrchestrator {
+	manager := managers.NewManager(apiKey, level, topic, language)
 
 	orchestrator := &ChatbotOrchestrator{
 		manager:       manager,
@@ -49,6 +51,20 @@ func (co *ChatbotOrchestrator) StartConversation() {
 	response := co.manager.ProcessJob(conversationJob)
 	if !response.Success {
 		utils.PrintInfo(fmt.Sprintf("Failed to start conversation: %s", response.Error))
+	} else {
+		suggestionAgent, exists := co.manager.GetAgent("SuggestionAgent")
+		if exists && response.Success {
+			suggestionJob := models.JobRequest{
+				Task:          "suggestion",
+				LastAIMessage: response.Result,
+			}
+
+			suggestionResponse := suggestionAgent.ProcessTask(suggestionJob)
+			if suggestionResponse.Success {
+				sa := suggestionAgent.(*agents.SuggestionAgent)
+				sa.DisplaySuggestions(suggestionResponse.Result)
+			}
+		}
 	}
 
 	co.interactiveSession()
@@ -107,9 +123,35 @@ func (co *ChatbotOrchestrator) interactiveSession() {
 }
 
 func (co *ChatbotOrchestrator) processUserMessage(userMessage string) {
-	conversationJob := models.JobRequest{
-		Task: "conversation",
+	conversationAgent := co.manager.GetConversationAgent()
+	lastAIMessage := ""
+	history := conversationAgent.GetConversationHistory()
+	if len(history) > 0 {
+		for i := len(history) - 1; i >= 0; i-- {
+			if history[i].Role == models.MessageRoleAssistant {
+				lastAIMessage = history[i].Content
+				break
+			}
+		}
+	}
 
+	evaluateAgent, evalExists := co.manager.GetAgent("EvaluateAgent")
+	if evalExists && lastAIMessage != "" {
+		evaluateJob := models.JobRequest{
+			Task:          "evaluate",
+			UserMessage:   userMessage,
+			LastAIMessage: lastAIMessage,
+		}
+
+		evaluateResponse := evaluateAgent.ProcessTask(evaluateJob)
+		if evaluateResponse.Success {
+			ea := evaluateAgent.(*agents.EvaluateAgent)
+			ea.DisplayEvaluation(evaluateResponse.Result)
+		}
+	}
+
+	conversationJob := models.JobRequest{
+		Task:        "conversation",
 		UserMessage: userMessage,
 	}
 
@@ -121,11 +163,24 @@ func (co *ChatbotOrchestrator) processUserMessage(userMessage string) {
 		return
 	}
 
+	suggestionAgent, exists := co.manager.GetAgent("SuggestionAgent")
+	if exists {
+		suggestionJob := models.JobRequest{
+			Task:          "suggestion",
+			LastAIMessage: conversationResponse.Result,
+		}
+
+		suggestionResponse := suggestionAgent.ProcessTask(suggestionJob)
+		if suggestionResponse.Success {
+			sa := suggestionAgent.(*agents.SuggestionAgent)
+			sa.DisplaySuggestions(suggestionResponse.Result)
+		}
+	}
 }
 
 func (co *ChatbotOrchestrator) endSession() {
 	co.sessionActive = false
-	conversationAgent := co.manager.agents["ConversationAgent"].(*ConversationAgent)
+	conversationAgent := co.manager.GetConversationAgent()
 	green := color.New(color.FgGreen, color.Bold)
 	cyan := color.New(color.FgCyan)
 
@@ -155,7 +210,7 @@ func (co *ChatbotOrchestrator) showHelp() {
 }
 
 func (co *ChatbotOrchestrator) showStats() {
-	conversationAgent := co.manager.agents["ConversationAgent"].(*ConversationAgent)
+	conversationAgent := co.manager.GetConversationAgent()
 	stats := conversationAgent.GetConversationStats()
 
 	cyan := color.New(color.FgCyan, color.Bold)
@@ -170,7 +225,7 @@ func (co *ChatbotOrchestrator) showStats() {
 
 func (co *ChatbotOrchestrator) setLevelInteractive() {
 	reader := bufio.NewReader(os.Stdin)
-	conversationAgent := co.manager.agents["ConversationAgent"].(*ConversationAgent)
+	conversationAgent := co.manager.GetConversationAgent()
 
 	yellow := color.New(color.FgYellow, color.Bold)
 	cyan := color.New(color.FgCyan)
@@ -248,7 +303,7 @@ func (co *ChatbotOrchestrator) parseLevelInput(input string) models.Conversation
 }
 
 func (co *ChatbotOrchestrator) showCurrentLevel() {
-	conversationAgent := co.manager.agents["ConversationAgent"].(*ConversationAgent)
+	conversationAgent := co.manager.GetConversationAgent()
 	currentLevel := conversationAgent.GetLevel()
 
 	yellow := color.New(color.FgYellow, color.Bold)
@@ -280,7 +335,7 @@ func (co *ChatbotOrchestrator) showCurrentLevel() {
 }
 
 func (co *ChatbotOrchestrator) resetConversation() {
-	co.manager.agents["ConversationAgent"].(*ConversationAgent).ResetConversation()
+	co.manager.GetConversationAgent().ResetConversation()
 
 	green := color.New(color.FgGreen)
 	green.Println("🔄 Conversation history has been reset!")
@@ -292,12 +347,26 @@ func (co *ChatbotOrchestrator) resetConversation() {
 	response := co.manager.ProcessJob(conversationJob)
 	if !response.Success {
 		utils.PrintInfo(fmt.Sprintf("Conversation reset: %s", response.Result))
+	} else {
+		suggestionAgent, exists := co.manager.GetAgent("SuggestionAgent")
+		if exists && response.Success {
+			suggestionJob := models.JobRequest{
+				Task:        "suggestion",
+				UserMessage: response.Result,
+			}
+
+			suggestionResponse := suggestionAgent.ProcessTask(suggestionJob)
+			if suggestionResponse.Success {
+				sa := suggestionAgent.(*agents.SuggestionAgent)
+				sa.DisplaySuggestions(suggestionResponse.Result)
+			}
+		}
 	}
 }
 
 func (co *ChatbotOrchestrator) showConversationHistory() {
-	conversationAgent := co.manager.agents["ConversationAgent"].(*ConversationAgent)
-	history := conversationAgent.GetFullConversationHistory()
+	conversationAgent := co.manager.GetConversationAgent()
+	history := conversationAgent.GetConversationHistory()
 
 	yellow := color.New(color.FgYellow, color.Bold)
 	cyan := color.New(color.FgCyan)
