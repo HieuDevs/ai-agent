@@ -8,7 +8,7 @@ conversation_levels:
       temperature: 0.2
       max_tokens: 250
     starter: |
-      Hi! Do you like music?
+      Hello? How are you today?
     conversational: |
       Have natural, friendly conversations:
       - Respond naturally to what they say

@@ -1,0 +1,10 @@
+.git
+.gitignore
+*.md
+README.md
+.DS_Store
+exports/*.json
+.vscode
+.idea
+*.log
+
