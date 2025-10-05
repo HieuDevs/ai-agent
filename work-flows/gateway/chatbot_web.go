@@ -1982,7 +1982,8 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
                             'needs_improvement': '📚'
                         };
                         const emoji = statusEmoji[data.data.status] || '✍️';
-                        evaluationDiv.innerHTML = '<div class="evaluation-header">' + emoji + ' Evaluation</div><div class="evaluation-content">' +
+                        const statusText = data.data.status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                        evaluationDiv.innerHTML = '<div class="evaluation-header">' + emoji + ' ' + statusText + '</div><div class="evaluation-content">' +
                                 '<div style="margin-bottom: 8px;"><b>' + data.data.short_description + '</b></div>' +
                                 data.data.long_description +
                                 (data.data.correct ? '<div style="margin-top: 8px; color: #2e7d32;"><b>✅ Correct:</b> ' + data.data.correct + '</div>' : '') +

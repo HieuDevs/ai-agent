@@ -77,10 +77,10 @@ type ChatRequest struct {
 	Models    []string `json:"models,omitempty"`
 	Providers struct {
 		Sort string `json:"sort"`
-	} `json:"providers,omitempty"`
+	} `json:"providers"`
 	Usage struct {
 		Include bool `json:"include"`
-	} `json:"usage,omitempty"`
+	} `json:"usage"`
 	Messages       []Message       `json:"messages"`
 	Temperature    float64         `json:"temperature"`
 	MaxTokens      int             `json:"max_tokens"`
