@@ -33,31 +33,31 @@ type ChatMessage struct {
 type ChatRequest struct {
 	Message   string `json:"message"`
 	Action    string `json:"action"`
-	Topic     string `json:"topic,omitempty"`
-	Level     string `json:"level,omitempty"`
-	Language  string `json:"language,omitempty"`
-	SessionID string `json:"session_id,omitempty"`
+	Topic     string `json:"topic,omitzero"`
+	Level     string `json:"level,omitzero"`
+	Language  string `json:"language,omitzero"`
+	SessionID string `json:"session_id,omitzero"`
 }
 
 type ChatResponse struct {
 	Success     bool          `json:"success"`
-	Message     string        `json:"message"`
-	Stats       interface{}   `json:"stats,omitempty"`
-	Level       string        `json:"level,omitempty"`
-	Topic       string        `json:"topic,omitempty"`
-	Topics      []string      `json:"topics,omitempty"`
-	History     []ChatMessage `json:"history,omitempty"`
-	Prompts     []PromptInfo  `json:"prompts,omitempty"`
-	Content     string        `json:"content,omitempty"`
-	Evaluation  interface{}   `json:"evaluation,omitempty"`
-	Suggestions interface{}   `json:"suggestions,omitempty"`
-	SessionID   string        `json:"session_id,omitempty"`
+	Message     string        `json:"message,omitzero"`
+	Stats       interface{}   `json:"stats,omitzero"`
+	Level       string        `json:"level,omitzero"`
+	Topic       string        `json:"topic,omitzero"`
+	Topics      []string      `json:"topics,omitzero"`
+	History     []ChatMessage `json:"history,omitzero"`
+	Prompts     []PromptInfo  `json:"prompts,omitzero"`
+	Content     string        `json:"content,omitzero"`
+	Evaluation  interface{}   `json:"evaluation,omitzero"`
+	Suggestions interface{}   `json:"suggestions,omitzero"`
+	SessionID   string        `json:"session_id,omitzero"`
 }
 
 type PromptInfo struct {
 	Name    string `json:"name"`
 	Topic   string `json:"topic"`
-	Content string `json:"content,omitempty"`
+	Content string `json:"content,omitzero"`
 }
 
 func NewChatbotWeb(apiKey string) *ChatbotWeb {
