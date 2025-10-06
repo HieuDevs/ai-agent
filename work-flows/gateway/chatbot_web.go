@@ -14,12 +14,15 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 type ChatbotWeb struct {
-	manager *managers.AgentManager
-	mu      sync.Mutex
-	apiKey  string
+	sessions map[string]*managers.AgentManager
+	mu       sync.Mutex
+	apiKey   string
 }
 
 type ChatMessage struct {
@@ -28,11 +31,12 @@ type ChatMessage struct {
 }
 
 type ChatRequest struct {
-	Message  string `json:"message"`
-	Action   string `json:"action"`
-	Topic    string `json:"topic,omitempty"`
-	Level    string `json:"level,omitempty"`
-	Language string `json:"language,omitempty"`
+	Message   string `json:"message"`
+	Action    string `json:"action"`
+	Topic     string `json:"topic,omitempty"`
+	Level     string `json:"level,omitempty"`
+	Language  string `json:"language,omitempty"`
+	SessionID string `json:"session_id,omitempty"`
 }
 
 type ChatResponse struct {
@@ -47,6 +51,7 @@ type ChatResponse struct {
 	Content     string        `json:"content,omitempty"`
 	Evaluation  interface{}   `json:"evaluation,omitempty"`
 	Suggestions interface{}   `json:"suggestions,omitempty"`
+	SessionID   string        `json:"session_id,omitempty"`
 }
 
 type PromptInfo struct {
@@ -57,8 +62,8 @@ type PromptInfo struct {
 
 func NewChatbotWeb(apiKey string) *ChatbotWeb {
 	web := &ChatbotWeb{
-		manager: nil,
-		apiKey:  apiKey,
+		sessions: make(map[string]*managers.AgentManager),
+		apiKey:   apiKey,
 	}
 
 	return web
@@ -67,19 +72,18 @@ func NewChatbotWeb(apiKey string) *ChatbotWeb {
 func (cw *ChatbotWeb) StartWebServer(port string) {
 
 	http.HandleFunc("/", cw.serveChatHTML)
-
-	http.HandleFunc("/api/chat", cw.handleChat)
-	http.HandleFunc("/api/stream", cw.handleStream)
-	http.HandleFunc("/api/init", cw.handleInit)
-	http.HandleFunc("/api/topics", cw.handleGetTopics)
+	// Orchestrator
 	http.HandleFunc("/api/create-session", cw.handleCreateSession)
+	http.HandleFunc("/api/stream", cw.handleStream)
+	http.HandleFunc("/api/translate", cw.handleTranslate)
+	http.HandleFunc("/api/suggestions", cw.handleGetSuggestions)
+	// Prompts + Topics
 	http.HandleFunc("/api/prompts", cw.handleGetPrompts)
+	http.HandleFunc("/api/topics", cw.handleGetTopics)
 	http.HandleFunc("/api/prompt/content", cw.handleGetPromptContent)
 	http.HandleFunc("/api/prompt/save", cw.handleSavePrompt)
 	http.HandleFunc("/api/prompt/create", cw.handleCreatePrompt)
 	http.HandleFunc("/api/prompt/delete", cw.handleDeletePrompt)
-	http.HandleFunc("/api/translate", cw.handleTranslate)
-	http.HandleFunc("/api/suggestions", cw.handleGetSuggestions)
 
 	addr := ":" + port
 	fmt.Printf("🌐 Web server starting at http://localhost%s\n", addr)
@@ -88,37 +92,15 @@ func (cw *ChatbotWeb) StartWebServer(port string) {
 	log.Fatal(http.ListenAndServe(addr, nil))
 }
 
-func (cw *ChatbotWeb) handleInit(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	if cw.manager == nil {
-		json.NewEncoder(w).Encode(ChatResponse{
-			Success: false,
-			Message: "No active session",
-		})
-		return
-	}
-
-	conversationAgent := cw.manager.GetConversationAgent()
-
-	response := ChatResponse{
-		Success: true,
-		Level:   string(conversationAgent.GetLevel()),
-		Topic:   strings.Title(conversationAgent.Topic),
-		Stats: map[string]int{
-			"total_messages": 0,
-			"user_messages":  0,
-			"bot_messages":   0,
-		},
-	}
-
-	json.NewEncoder(w).Encode(response)
-}
-
 func (cw *ChatbotWeb) handleStream(w http.ResponseWriter, r *http.Request) {
 	userMessage := r.URL.Query().Get("message")
+	sessionID := r.URL.Query().Get("session_id")
 	if userMessage == "" {
 		http.Error(w, "No message provided", http.StatusBadRequest)
+		return
+	}
+	if sessionID == "" {
+		http.Error(w, "No session ID provided", http.StatusBadRequest)
 		return
 	}
 
@@ -135,13 +117,14 @@ func (cw *ChatbotWeb) handleStream(w http.ResponseWriter, r *http.Request) {
 
 	cw.mu.Lock()
 
-	if cw.manager == nil {
+	manager, exists := cw.sessions[sessionID]
+	if !exists {
 		cw.mu.Unlock()
-		http.Error(w, "No active session", http.StatusBadRequest)
+		http.Error(w, "Invalid session ID", http.StatusBadRequest)
 		return
 	}
 
-	conversationAgent := cw.manager.GetConversationAgent()
+	conversationAgent := manager.GetConversationAgent()
 
 	conversationLevel := conversationAgent.GetLevel()
 	pathPrompts := filepath.Join(utils.GetPromptsDir(), conversationAgent.Topic+"_prompt.yaml")
@@ -172,7 +155,7 @@ func (cw *ChatbotWeb) handleStream(w http.ResponseWriter, r *http.Request) {
 	evaluationChan := make(chan map[string]interface{}, 1)
 
 	// Run evaluation in parallel (non-blocking)
-	evaluateAgent, evalExists := cw.manager.GetAgent("EvaluateAgent")
+	evaluateAgent, evalExists := manager.GetAgent("EvaluateAgent")
 	if evalExists {
 		go func() {
 			defer close(evaluationChan)
@@ -305,118 +288,6 @@ func (cw *ChatbotWeb) handleStream(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (cw *ChatbotWeb) handleChat(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-
-	var req ChatRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		json.NewEncoder(w).Encode(ChatResponse{
-			Success: false,
-			Message: "Invalid request",
-		})
-		return
-	}
-
-	cw.mu.Lock()
-	defer cw.mu.Unlock()
-
-	if cw.manager == nil {
-		json.NewEncoder(w).Encode(ChatResponse{
-			Success: false,
-			Message: "No active session",
-		})
-		return
-	}
-
-	conversationAgent := cw.manager.GetConversationAgent()
-
-	switch req.Action {
-	case "init":
-		conversationJob := models.JobRequest{
-			Task: "conversation",
-		}
-		response := cw.manager.ProcessJob(conversationJob)
-
-		stats := conversationAgent.GetConversationStats()
-
-		json.NewEncoder(w).Encode(ChatResponse{
-			Success: response.Success,
-			Message: response.Result,
-			Stats:   stats,
-			Level:   string(conversationAgent.GetLevel()),
-			Topic:   strings.Title(conversationAgent.Topic),
-		})
-
-	case "stats":
-		stats := conversationAgent.GetConversationStats()
-		json.NewEncoder(w).Encode(ChatResponse{
-			Success: true,
-			Stats:   stats,
-			Level:   string(conversationAgent.GetLevel()),
-			Topic:   strings.Title(conversationAgent.Topic),
-		})
-
-	case "reset":
-		conversationAgent.ResetConversation()
-
-		conversationJob := models.JobRequest{
-			Task: "conversation",
-		}
-		response := cw.manager.ProcessJob(conversationJob)
-
-		stats := conversationAgent.GetConversationStats()
-
-		json.NewEncoder(w).Encode(ChatResponse{
-			Success: true,
-			Message: response.Result,
-			Stats:   stats,
-		})
-
-	case "set_level":
-		newLevel := models.ConversationLevel(strings.ToLower(req.Message))
-		if !models.IsValidConversationLevel(string(newLevel)) {
-			json.NewEncoder(w).Encode(ChatResponse{
-				Success: false,
-				Message: "Invalid level",
-			})
-			return
-		}
-
-		conversationAgent.SetLevel(newLevel)
-		json.NewEncoder(w).Encode(ChatResponse{
-			Success: true,
-			Level:   string(newLevel),
-			Message: "Level changed successfully",
-		})
-
-	case "history":
-		history := conversationAgent.GetConversationHistory()
-		messages := make([]ChatMessage, len(history))
-		for i, msg := range history {
-			messages[i] = ChatMessage{
-				Role:    string(msg.Role),
-				Content: msg.Content,
-			}
-		}
-
-		json.NewEncoder(w).Encode(ChatResponse{
-			Success: true,
-			History: messages,
-		})
-
-	default:
-		json.NewEncoder(w).Encode(ChatResponse{
-			Success: false,
-			Message: "Unknown action",
-		})
-	}
-}
-
 func (cw *ChatbotWeb) handleGetTopics(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -462,30 +333,40 @@ func (cw *ChatbotWeb) handleCreateSession(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	language := req.Language
-	if language == "" {
-		language = "Vietnamese"
+	userLanguage := req.Language
+	if userLanguage == "" {
+		userLanguage = "Vietnamese"
 	}
 
 	cw.mu.Lock()
-	sessionId := fmt.Sprintf("web_%d", utils.GetCurrentTimestamp())
-	cw.manager = managers.NewManager(cw.apiKey, level, req.Topic, language, sessionId)
+	var sessionID string
+	if req.SessionID != "" {
+		sessionID = req.SessionID
+		// If session exists, remove it to create a new one
+		delete(cw.sessions, sessionID)
+	} else {
+		sessionID = fmt.Sprintf("web_%d", utils.GetCurrentTimestamp())
+	}
+
+	manager := managers.NewManager(cw.apiKey, level, req.Topic, userLanguage, sessionID)
+	cw.sessions[sessionID] = manager
 	cw.mu.Unlock()
 
 	conversationJob := models.JobRequest{
 		Task: "conversation",
 	}
-	response := cw.manager.ProcessJob(conversationJob)
+	response := manager.ProcessJob(conversationJob)
 
-	conversationAgent := cw.manager.GetConversationAgent()
+	conversationAgent := manager.GetConversationAgent()
 	stats := conversationAgent.GetConversationStats()
 
 	json.NewEncoder(w).Encode(ChatResponse{
-		Success: response.Success,
-		Message: response.Result,
-		Stats:   stats,
-		Level:   string(conversationAgent.GetLevel()),
-		Topic:   strings.Title(conversationAgent.Topic),
+		Success:   response.Success,
+		Message:   response.Result,
+		Stats:     stats,
+		Level:     string(conversationAgent.GetLevel()),
+		Topic:     cases.Title(language.English).String(conversationAgent.Topic),
+		SessionID: sessionID,
 	})
 }
 
@@ -615,8 +496,8 @@ func (cw *ChatbotWeb) handleSavePrompt(w http.ResponseWriter, r *http.Request) {
 
 	shouldReset := false
 	cw.mu.Lock()
-	if cw.manager != nil {
-		conversationAgent := cw.manager.GetConversationAgent()
+	for _, manager := range cw.sessions {
+		conversationAgent := manager.GetConversationAgent()
 		if conversationAgent.Topic == req.Topic {
 			shouldReset = true
 			conversationAgent.ResetConversation()
@@ -833,7 +714,8 @@ func (cw *ChatbotWeb) handleGetSuggestions(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Content-Type", "application/json")
 
 	var req struct {
-		Message string `json:"message"`
+		Message   string `json:"message"`
+		SessionID string `json:"session_id"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -852,18 +734,27 @@ func (cw *ChatbotWeb) handleGetSuggestions(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	cw.mu.Lock()
-	defer cw.mu.Unlock()
-
-	if cw.manager == nil {
+	if req.SessionID == "" {
 		json.NewEncoder(w).Encode(ChatResponse{
 			Success: false,
-			Message: "No active session",
+			Message: "Session ID is required",
 		})
 		return
 	}
 
-	suggestionAgent, exists := cw.manager.GetAgent("SuggestionAgent")
+	cw.mu.Lock()
+	defer cw.mu.Unlock()
+
+	manager, exists := cw.sessions[req.SessionID]
+	if !exists {
+		json.NewEncoder(w).Encode(ChatResponse{
+			Success: false,
+			Message: "Invalid session ID",
+		})
+		return
+	}
+
+	suggestionAgent, exists := manager.GetAgent("SuggestionAgent")
 	if !exists {
 		json.NewEncoder(w).Encode(ChatResponse{
 			Success: false,
@@ -1628,6 +1519,7 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
         let editingPromptTopic = '';
         let isCreatingNew = false;
         let yamlValidationTimeout = null;
+        let currentSessionID = '';
 
         async function init() {
             await loadTopics();
@@ -1885,7 +1777,8 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
                         topic: currentTopic,
-                        level: currentLevel
+                        level: currentLevel,
+                        session_id: currentSessionID
                     })
                 });
                 
@@ -1893,6 +1786,7 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
                 
                 if (data.success) {
                     sessionActive = true;
+                    currentSessionID = data.session_id;
                     document.getElementById('chatTitle').textContent = data.topic + ' - ' + capitalizeLevel(data.level);
                     document.getElementById('chatInfo').textContent = 'Level: ' + capitalizeLevel(data.level);
                     document.getElementById('sendBtn').disabled = false;
@@ -1946,7 +1840,7 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
             const typingIndicator = addTypingIndicator();
             
             try {
-                const eventSource = new EventSource('/api/stream?message=' + encodeURIComponent(message));
+                const eventSource = new EventSource('/api/stream?message=' + encodeURIComponent(message) + '&session_id=' + encodeURIComponent(currentSessionID));
                 let messageStarted = false;
                 let contentDiv, translationDiv;
                 
@@ -2137,7 +2031,10 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
                 const response = await fetch('/api/suggestions', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ message: message })
+                    body: JSON.stringify({ 
+                        message: message,
+                        session_id: currentSessionID
+                    })
                 });
                 const data = await response.json();
 
