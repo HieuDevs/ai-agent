@@ -1,12 +1,126 @@
 {
-  "timestamp": "2025-10-03T01:21:19+07:00",
+  "timestamp": "2025-10-07T22:37:54+07:00",
   "request_type": "conversation_export",
   "endpoint": "/export/history",
   "status": 200,
-  "data": [
-    {
-      "role": "assistant",
-      "content": "It looks like you didn't respond. That's okay! Let's try again.\n\nTeacher: \"Hi! That looks fun! Do you play basketball often?\"\n\nNow you can respond!"
-    }
-  ]
+  "data": {
+    "history": [
+      {
+        "index": 0,
+        "role": "assistant",
+        "content": "Hi! Do you like sports?\n",
+        "suggestion": {
+          "leading_sentence": "Bạn có thể nói 'I like ...'",
+          "vocab_options": [
+            {
+              "text": "football",
+              "emoji": "⚽"
+            },
+            {
+              "text": "basketball",
+              "emoji": "🏀"
+            },
+            {
+              "text": "swimming",
+              "emoji": "🏊"
+            }
+          ]
+        }
+      },
+      {
+        "index": 1,
+        "role": "user",
+        "content": "i like football",
+        "evaluation": {
+          "status": "excellent",
+          "short_description": "Rất tốt! Câu trả lời của bạn rất liên quan.",
+          "long_description": "Rất tốt! Câu trả lời của bạn rất liên quan đến câu hỏi của AI. Bạn đã chia sẻ thông tin về đội bóng yêu thích của mình, điều này rất tốt. Tuy nhiên, bạn có thể mở rộng câu trả lời bằng cách nói thêm về lý do tại sao bạn thích Manchester United hoặc hỏi AI về đội bóng yêu thích của họ. Ví dụ: \"My favorite team is Manchester United too!\"",
+          "correct": "My favorite team is Manchester United too!"
+        }
+      },
+      {
+        "index": 2,
+        "role": "assistant",
+        "content": "That's awesome! Football is such an exciting sport. Do you have a favorite team you support?",
+        "suggestion": {
+          "leading_sentence": "Bạn có thể nói 'My favorite team is ...'",
+          "vocab_options": [
+            {
+              "text": "Manchester United",
+              "emoji": "⚽"
+            },
+            {
+              "text": "Barcelona",
+              "emoji": "🏆"
+            },
+            {
+              "text": "Brazil",
+              "emoji": "🇧🇷"
+            }
+          ]
+        }
+      },
+      {
+        "index": 3,
+        "role": "user",
+        "content": "My favorite team is Manchester United",
+        "evaluation": {
+          "status": "good",
+          "short_description": "Câu trả lời của bạn rất tốt!",
+          "long_description": "Rất tốt! Câu trả lời của bạn liên quan đến câu hỏi của AI. Bạn đã nói về cầu thủ yêu thích của mình, nhưng để trả lời câu hỏi của AI, bạn có thể thêm thông tin về cầu thủ yêu thích của mình trong đội bóng. Ví dụ: \"Cầu thủ yêu thích của tôi trong đội là Bruno Fernandes.\"",
+          "correct": "My favorite player on the team is Bruno Fernandes."
+        }
+      },
+      {
+        "index": 4,
+        "role": "assistant",
+        "content": "Great choice! Manchester United has such a rich history and a passionate fan base. Do you have a favorite player on the team?",
+        "suggestion": {
+          "leading_sentence": "Bạn có thể nói 'My favorite player is ...'",
+          "vocab_options": [
+            {
+              "text": "Rashford",
+              "emoji": "⚽"
+            },
+            {
+              "text": "Bruno Fernandes",
+              "emoji": "🥇"
+            },
+            {
+              "text": "Sancho",
+              "emoji": "🌟"
+            }
+          ]
+        }
+      },
+      {
+        "index": 5,
+        "role": "user",
+        "content": "My favorite player is Sancho"
+      },
+      {
+        "index": 6,
+        "role": "assistant",
+        "content": "Jadon Sancho is a fantastic player! He has such great skills and creativity on the field. What do you like most about his playing style?",
+        "suggestion": {
+          "leading_sentence": "Bạn có thể nói 'I like ...'",
+          "vocab_options": [
+            {
+              "text": "his dribbling",
+              "emoji": "⚽"
+            },
+            {
+              "text": "his speed",
+              "emoji": "🔥"
+            },
+            {
+              "text": "his creativity",
+              "emoji": "✨"
+            }
+          ]
+        }
+      }
+    ],
+    "session_id": "cli_1759851290"
+  }
 }

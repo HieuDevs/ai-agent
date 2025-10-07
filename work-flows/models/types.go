@@ -14,9 +14,29 @@ func (r MessageRole) String() string {
 	return string(r)
 }
 
+type VocabOption struct {
+	Text  string `json:"text"`  // Vocabulary phrase
+	Emoji string `json:"emoji"` // Relevant emoji
+}
+
+type SuggestionResponse struct {
+	LeadingSentence string        `json:"leading_sentence"`
+	VocabOptions    []VocabOption `json:"vocab_options"`
+}
+
+type EvaluationResponse struct {
+	Status           string `json:"status"`            // excellent/good/needs_improvement
+	ShortDescription string `json:"short_description"` // Brief encouraging feedback
+	LongDescription  string `json:"long_description"`  // Detailed analysis with HTML tags
+	Correct          string `json:"correct"`           // Corrected version in English
+}
+
 type Message struct {
-	Role    MessageRole `json:"role"`
-	Content string      `json:"content"`
+	Index      int                 `json:"index"`
+	Role       MessageRole         `json:"role"`
+	Content    string              `json:"content"`
+	Suggestion *SuggestionResponse `json:"suggestion,omitempty"` // Only for AI messages
+	Evaluation *EvaluationResponse `json:"evaluation,omitempty"` // Only for user messages
 }
 
 type ConversationLevel string
@@ -67,9 +87,9 @@ type ResponseFormat struct {
 }
 
 type JSONSchemaSpec struct {
-	Name   string                 `json:"name"`
-	Strict bool                   `json:"strict"`
-	Schema map[string]interface{} `json:"schema"`
+	Name   string         `json:"name"`
+	Strict bool           `json:"strict"`
+	Schema map[string]any `json:"schema"`
 }
 
 type ChatRequest struct {

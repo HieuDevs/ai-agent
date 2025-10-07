@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -53,6 +54,9 @@ func (co *ChatbotOrchestrator) StartConversation() {
 	if !response.Success {
 		utils.PrintInfo(fmt.Sprintf("Failed to start conversation: %s", response.Error))
 	} else {
+		// Update the most recent AI message or create new one if none exists
+		co.manager.GetHistoryManager().UpdateLastMessage(models.MessageRoleAssistant, response.Result)
+
 		suggestionAgent, exists := co.manager.GetAgent("SuggestionAgent")
 		if exists && response.Success {
 			suggestionJob := models.JobRequest{
@@ -64,6 +68,12 @@ func (co *ChatbotOrchestrator) StartConversation() {
 			if suggestionResponse.Success {
 				sa := suggestionAgent.(*agents.SuggestionAgent)
 				sa.DisplaySuggestions(suggestionResponse.Result)
+
+				// Attach suggestions to the most recent AI message
+				var suggestion models.SuggestionResponse
+				if err := json.Unmarshal([]byte(suggestionResponse.Result), &suggestion); err == nil {
+					co.manager.GetHistoryManager().UpdateLastSuggestion(&suggestion)
+				}
 			}
 		}
 	}
@@ -115,6 +125,11 @@ func (co *ChatbotOrchestrator) interactiveSession() {
 			continue
 		}
 
+		if strings.ToLower(userMessage) == "assessment" {
+			co.showAssessment()
+			continue
+		}
+
 		if userMessage == "" {
 			continue
 		}
@@ -124,9 +139,9 @@ func (co *ChatbotOrchestrator) interactiveSession() {
 }
 
 func (co *ChatbotOrchestrator) processUserMessage(userMessage string) {
-	conversationAgent := co.manager.GetConversationAgent()
+
 	lastAIMessage := ""
-	history := conversationAgent.GetConversationHistory()
+	history := co.manager.GetHistoryManager().GetConversationHistory()
 	if len(history) > 0 {
 		for i := len(history) - 1; i >= 0; i-- {
 			if history[i].Role == models.MessageRoleAssistant {
@@ -136,6 +151,7 @@ func (co *ChatbotOrchestrator) processUserMessage(userMessage string) {
 		}
 	}
 
+	// Evaluate user message and attach to exact index
 	evaluateAgent, evalExists := co.manager.GetAgent("EvaluateAgent")
 	if evalExists && lastAIMessage != "" {
 		evaluateJob := models.JobRequest{
@@ -148,6 +164,11 @@ func (co *ChatbotOrchestrator) processUserMessage(userMessage string) {
 		if evaluateResponse.Success {
 			ea := evaluateAgent.(*agents.EvaluateAgent)
 			ea.DisplayEvaluation(evaluateResponse.Result)
+
+			// Attach evaluation to the most recent user message
+			if parsed, err := agents.ParseEvaluationResponse(evaluateResponse.Result); err == nil {
+				co.manager.GetHistoryManager().UpdateLastEvaluation(parsed)
+			}
 		}
 	}
 
@@ -164,6 +185,7 @@ func (co *ChatbotOrchestrator) processUserMessage(userMessage string) {
 		return
 	}
 
+	// Generate suggestions and attach to exact AI message index
 	suggestionAgent, exists := co.manager.GetAgent("SuggestionAgent")
 	if exists {
 		suggestionJob := models.JobRequest{
@@ -175,19 +197,24 @@ func (co *ChatbotOrchestrator) processUserMessage(userMessage string) {
 		if suggestionResponse.Success {
 			sa := suggestionAgent.(*agents.SuggestionAgent)
 			sa.DisplaySuggestions(suggestionResponse.Result)
+
+			// Attach suggestions to the most recent AI message
+			var suggestion models.SuggestionResponse
+			if err := json.Unmarshal([]byte(suggestionResponse.Result), &suggestion); err == nil {
+				co.manager.GetHistoryManager().UpdateLastSuggestion(&suggestion)
+			}
 		}
 	}
 }
 
 func (co *ChatbotOrchestrator) endSession() {
 	co.sessionActive = false
-	conversationAgent := co.manager.GetConversationAgent()
 	green := color.New(color.FgGreen, color.Bold)
 	cyan := color.New(color.FgCyan)
 
 	green.Println("\n🎉 Thank you for practicing English with me!")
 
-	stats := conversationAgent.GetConversationStats()
+	stats := co.manager.GetHistoryManager().GetConversationStats()
 	cyan.Printf("📈 Messages exchanged: %d (you: %d, me: %d)\n",
 		stats["total_messages"], stats["user_messages"], stats["bot_messages"])
 	cyan.Printf("🔑 Session ID: %s\n", co.manager.GetSessionId())
@@ -204,6 +231,7 @@ func (co *ChatbotOrchestrator) showHelp() {
 	white.Println("• help - Show this help message")
 	white.Println("• stats - Show conversation statistics")
 	white.Println("• history - Show conversation history and export it")
+	white.Println("• assessment - Show assessment of the conversation")
 	white.Println("• reset - Reset conversation history")
 	white.Println("• level - Show current conversation level")
 	white.Println("• set level - Change conversation difficulty level")
@@ -212,14 +240,13 @@ func (co *ChatbotOrchestrator) showHelp() {
 }
 
 func (co *ChatbotOrchestrator) showStats() {
-	conversationAgent := co.manager.GetConversationAgent()
-	stats := conversationAgent.GetConversationStats()
+	stats := co.manager.GetHistoryManager().GetConversationStats()
 
 	cyan := color.New(color.FgCyan, color.Bold)
 	green := color.New(color.FgGreen)
 
 	cyan.Println("\n📊 Conversation Statistics:")
-	green.Printf("• Current level: %s\n", conversationAgent.GetLevel())
+	green.Printf("• Current level: %s\n", co.manager.GetConversationAgent().GetLevel())
 	green.Printf("• Total messages: %d\n", stats["total_messages"])
 	green.Printf("• Your messages: %d\n", stats["user_messages"])
 	green.Printf("• My responses: %d\n", stats["bot_messages"])
@@ -228,7 +255,6 @@ func (co *ChatbotOrchestrator) showStats() {
 
 func (co *ChatbotOrchestrator) setLevelInteractive() {
 	reader := bufio.NewReader(os.Stdin)
-	conversationAgent := co.manager.GetConversationAgent()
 
 	yellow := color.New(color.FgYellow, color.Bold)
 	cyan := color.New(color.FgCyan)
@@ -236,7 +262,7 @@ func (co *ChatbotOrchestrator) setLevelInteractive() {
 	white := color.New(color.FgWhite)
 
 	yellow.Println("\n🎯 Conversation Level Settings")
-	cyan.Printf("Current level: %s\n\n", conversationAgent.GetLevel())
+	cyan.Printf("Current level: %s\n\n", co.manager.GetConversationAgent().GetLevel())
 
 	green.Println("Available levels:")
 	white.Println("1. Beginner      - Simple vocabulary, basic grammar, short sentences (English only, family-friendly)")
@@ -261,7 +287,7 @@ func (co *ChatbotOrchestrator) setLevelInteractive() {
 		return
 	}
 
-	conversationAgent.SetLevel(newLevel)
+	co.manager.GetConversationAgent().SetLevel(newLevel)
 
 	green.Printf("✅ Level changed to: %s\n", newLevel)
 
@@ -306,8 +332,7 @@ func (co *ChatbotOrchestrator) parseLevelInput(input string) models.Conversation
 }
 
 func (co *ChatbotOrchestrator) showCurrentLevel() {
-	conversationAgent := co.manager.GetConversationAgent()
-	currentLevel := conversationAgent.GetLevel()
+	currentLevel := co.manager.GetConversationAgent().GetLevel()
 
 	yellow := color.New(color.FgYellow, color.Bold)
 	cyan := color.New(color.FgCyan)
@@ -328,7 +353,7 @@ func (co *ChatbotOrchestrator) showCurrentLevel() {
 
 	green.Printf("Style: %s\n", levelDescriptions[string(currentLevel)])
 
-	capabilities := conversationAgent.GetLevelSpecificCapabilities()
+	capabilities := co.manager.GetConversationAgent().GetLevelSpecificCapabilities()
 	white.Println("\nCapabilities:")
 	for _, capability := range capabilities {
 		white.Printf("• %s\n", capability)
@@ -338,7 +363,7 @@ func (co *ChatbotOrchestrator) showCurrentLevel() {
 }
 
 func (co *ChatbotOrchestrator) resetConversation() {
-	co.manager.GetConversationAgent().ResetConversation()
+	co.manager.GetHistoryManager().ResetConversation()
 
 	green := color.New(color.FgGreen)
 	green.Println("🔄 Conversation history has been reset!")
@@ -351,25 +376,34 @@ func (co *ChatbotOrchestrator) resetConversation() {
 	if !response.Success {
 		utils.PrintInfo(fmt.Sprintf("Conversation reset: %s", response.Result))
 	} else {
+		// Update the most recent AI message or create new one if none exists
+		co.manager.GetHistoryManager().UpdateLastMessage(models.MessageRoleAssistant, response.Result)
+		// co.manager.GetHistoryManager().EnforceMax(20)
+
 		suggestionAgent, exists := co.manager.GetAgent("SuggestionAgent")
 		if exists && response.Success {
 			suggestionJob := models.JobRequest{
-				Task:        "suggestion",
-				UserMessage: response.Result,
+				Task:          "suggestion",
+				LastAIMessage: response.Result,
 			}
 
 			suggestionResponse := suggestionAgent.ProcessTask(suggestionJob)
 			if suggestionResponse.Success {
 				sa := suggestionAgent.(*agents.SuggestionAgent)
 				sa.DisplaySuggestions(suggestionResponse.Result)
+
+				// Attach suggestions to the most recent AI message
+				var suggestion models.SuggestionResponse
+				if err := json.Unmarshal([]byte(suggestionResponse.Result), &suggestion); err == nil {
+					co.manager.GetHistoryManager().UpdateLastSuggestion(&suggestion)
+				}
 			}
 		}
 	}
 }
 
 func (co *ChatbotOrchestrator) showConversationHistory() {
-	conversationAgent := co.manager.GetConversationAgent()
-	history := conversationAgent.GetConversationHistory()
+	history := co.manager.GetHistoryManager().GetConversationHistory()
 
 	yellow := color.New(color.FgYellow, color.Bold)
 	cyan := color.New(color.FgCyan)
@@ -400,9 +434,41 @@ func (co *ChatbotOrchestrator) showConversationHistory() {
 	}
 
 	white.Println()
-	exportData := map[string]interface{}{
+	exportData := map[string]any{
 		"session_id": co.manager.GetSessionId(),
 		"history":    history,
 	}
 	utils.ExportToJSON("conversation_history.json", exportData, "conversation_export", "/export/history", 200)
+}
+
+func (co *ChatbotOrchestrator) showAssessment() {
+	assessmentAgent := co.manager.GetAssessmentAgent()
+	if assessmentAgent == nil {
+		utils.PrintError("Assessment agent not available")
+		return
+	}
+
+	historyManager := co.manager.GetHistoryManager()
+	if historyManager.Len() == 0 {
+		yellow := color.New(color.FgYellow, color.Bold)
+		yellow.Println("\n📊 Assessment")
+		utils.PrintInfo("No conversation history available for assessment. Start a conversation first!")
+		return
+	}
+
+	assessmentJob := models.JobRequest{
+		Task:          "assess proficiency level",
+		UserMessage:   "",
+		LastAIMessage: "",
+		Metadata:      historyManager,
+	}
+
+	utils.PrintInfo("Analyzing conversation history for assessment...")
+	response := assessmentAgent.ProcessTask(assessmentJob)
+
+	if response.Success {
+		assessmentAgent.DisplayAssessment(response.Result)
+	} else {
+		utils.PrintError(fmt.Sprintf("Assessment failed: %s", response.Error))
+	}
 }

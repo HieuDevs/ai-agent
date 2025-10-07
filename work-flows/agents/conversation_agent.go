@@ -23,20 +23,21 @@ func GetLevelSpecificPrompt(path string, level models.ConversationLevel, promptT
 }
 
 type ConversationAgent struct {
-	name                string
-	conversationHistory []models.Message
-	model               string
-	temperature         float64
-	maxTokens           int
-	Topic               string
-	client              client.Client
-	level               models.ConversationLevel
+	name        string
+	model       string
+	temperature float64
+	maxTokens   int
+	Topic       string
+	client      client.Client
+	level       models.ConversationLevel
+	history     *services.ConversationHistoryManager
 }
 
 func NewConversationAgent(
 	client client.Client,
 	level models.ConversationLevel,
 	topic string,
+	history *services.ConversationHistoryManager,
 ) *ConversationAgent {
 	if !models.IsValidConversationLevel(string(level)) {
 		level = models.ConversationLevelIntermediate
@@ -48,14 +49,14 @@ func NewConversationAgent(
 	)
 
 	return &ConversationAgent{
-		name:                "ConversationAgent",
-		client:              client,
-		conversationHistory: []models.Message{},
-		level:               level,
-		Topic:               topic,
-		model:               model,
-		temperature:         temperature,
-		maxTokens:           maxTokens,
+		name:        "ConversationAgent",
+		client:      client,
+		level:       level,
+		Topic:       topic,
+		model:       model,
+		temperature: temperature,
+		maxTokens:   maxTokens,
+		history:     history,
 	}
 }
 
@@ -97,7 +98,7 @@ func (ca *ConversationAgent) generateConversationStarter() *models.JobResponse {
 	pathPrompts := filepath.Join(utils.GetPromptsDir(), ca.Topic+"_prompt.yaml")
 	starterMessage := GetLevelSpecificPrompt(pathPrompts, ca.level, "starter")
 
-	ca.addToHistory(models.MessageRoleAssistant, starterMessage)
+	ca.history.AddToHistory(models.MessageRoleAssistant, starterMessage)
 	response := &models.JobResponse{
 		AgentName: ca.Name(),
 		Success:   true,
@@ -127,9 +128,10 @@ func (ca *ConversationAgent) generateConversationalResponse(
 		},
 	}
 
-	if len(ca.conversationHistory) > 0 {
-		recentHistory := ca.getRecentHistory(6)
-		messages = append(messages, recentHistory...)
+	history := ca.history.GetConversationHistory()
+	if len(history) > 0 {
+		// recentHistory := ca.history.GetRecentHistory(6)
+		messages = append(messages, history...)
 	}
 
 	messages = append(messages, models.Message{
@@ -150,35 +152,14 @@ func (ca *ConversationAgent) generateConversationalResponse(
 		}
 	}
 
-	ca.addToHistory(models.MessageRoleUser, task.UserMessage)
-	ca.addToHistory(models.MessageRoleAssistant, response)
+	ca.history.AddToHistory(models.MessageRoleUser, task.UserMessage)
+	ca.history.AddToHistory(models.MessageRoleAssistant, response)
 
 	return &models.JobResponse{
 		AgentName: ca.Name(),
 		Success:   true,
 		Result:    response,
 	}
-}
-
-func (ca *ConversationAgent) addToHistory(role models.MessageRole, content string) {
-	ca.conversationHistory = append(ca.conversationHistory, models.Message{
-		Role:    models.MessageRole(role),
-		Content: content,
-	})
-
-	if len(ca.conversationHistory) > 20 {
-		ca.conversationHistory = ca.conversationHistory[2:]
-	}
-}
-
-func (ca *ConversationAgent) getRecentHistory(maxMessages int) []models.Message {
-	start := max(len(ca.conversationHistory)-maxMessages, 0)
-	return ca.conversationHistory[start:]
-}
-
-func (ca *ConversationAgent) ResetConversation() {
-	ca.conversationHistory = []models.Message{}
-	utils.PrintSuccess("Conversation history reset")
 }
 
 func (ca *ConversationAgent) GetClient() client.Client {
@@ -199,14 +180,6 @@ func (ca *ConversationAgent) GetMaxTokens() int {
 
 func (ca *ConversationAgent) GetTopic() string {
 	return ca.Topic
-}
-
-func (ca *ConversationAgent) GetConversationHistory() []models.Message {
-	return ca.conversationHistory
-}
-
-func (ca *ConversationAgent) SetConversationHistory(history []models.Message) {
-	ca.conversationHistory = history
 }
 
 func (ca *ConversationAgent) SetLevel(level models.ConversationLevel) {
@@ -247,24 +220,6 @@ func (ca *ConversationAgent) GetLevelSpecificCapabilities() []string {
 	}
 
 	return capabilities
-}
-
-func (ca *ConversationAgent) GetConversationStats() map[string]int {
-	return map[string]int{
-		"total_messages": len(ca.conversationHistory),
-		"user_messages":  ca.countMessagesByRole(models.MessageRoleUser),
-		"bot_messages":   ca.countMessagesByRole(models.MessageRoleAssistant),
-	}
-}
-
-func (ca *ConversationAgent) countMessagesByRole(role models.MessageRole) int {
-	count := 0
-	for _, msg := range ca.conversationHistory {
-		if msg.Role == models.MessageRole(role) {
-			count++
-		}
-	}
-	return count
 }
 
 func (ca *ConversationAgent) showVietnameseTranslation(text string) {

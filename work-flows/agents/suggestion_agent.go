@@ -21,16 +21,6 @@ type SuggestionAgent struct {
 	config      *utils.SuggestionPromptConfig
 }
 
-type SuggestionResponse struct {
-	LeadingSentence string        `json:"leading_sentence"`
-	VocabOptions    []VocabOption `json:"vocab_options"`
-}
-
-type VocabOption struct {
-	Text  string `json:"text"`
-	Emoji string `json:"emoji"`
-}
-
 func NewSuggestionAgent(
 	client client.Client,
 	level models.ConversationLevel,
@@ -304,18 +294,16 @@ func (sa *SuggestionAgent) getResponseWithFormat(messages []models.Message, resp
 }
 
 func (sa *SuggestionAgent) DisplaySuggestions(jsonResponse string) {
-	var suggestion SuggestionResponse
+	var suggestion models.SuggestionResponse
 
 	cleanJSON := strings.TrimSpace(jsonResponse)
-	if strings.HasPrefix(cleanJSON, "```json") {
-		cleanJSON = strings.TrimPrefix(cleanJSON, "```json")
-		cleanJSON = strings.TrimSuffix(cleanJSON, "```")
-		cleanJSON = strings.TrimSpace(cleanJSON)
-	} else if strings.HasPrefix(cleanJSON, "```") {
-		cleanJSON = strings.TrimPrefix(cleanJSON, "```")
-		cleanJSON = strings.TrimSuffix(cleanJSON, "```")
-		cleanJSON = strings.TrimSpace(cleanJSON)
+	if after, ok := strings.CutPrefix(cleanJSON, "```json"); ok {
+		cleanJSON = after
+	} else if after, ok := strings.CutPrefix(cleanJSON, "```"); ok {
+		cleanJSON = after
 	}
+	cleanJSON = strings.TrimSuffix(cleanJSON, "```")
+	cleanJSON = strings.TrimSpace(cleanJSON)
 
 	err := json.Unmarshal([]byte(cleanJSON), &suggestion)
 	if err != nil {

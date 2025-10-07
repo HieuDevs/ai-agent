@@ -42,15 +42,15 @@ type ChatRequest struct {
 type ChatResponse struct {
 	Success     bool          `json:"success"`
 	Message     string        `json:"message,omitzero"`
-	Stats       interface{}   `json:"stats,omitzero"`
+	Stats       any           `json:"stats,omitzero"`
 	Level       string        `json:"level,omitzero"`
 	Topic       string        `json:"topic,omitzero"`
 	Topics      []string      `json:"topics,omitzero"`
 	History     []ChatMessage `json:"history,omitzero"`
 	Prompts     []PromptInfo  `json:"prompts,omitzero"`
 	Content     string        `json:"content,omitzero"`
-	Evaluation  interface{}   `json:"evaluation,omitzero"`
-	Suggestions interface{}   `json:"suggestions,omitzero"`
+	Evaluation  any           `json:"evaluation,omitzero"`
+	Suggestions any           `json:"suggestions,omitzero"`
 	SessionID   string        `json:"session_id,omitzero"`
 }
 
@@ -124,10 +124,8 @@ func (cw *ChatbotWeb) handleStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conversationAgent := manager.GetConversationAgent()
-
-	conversationLevel := conversationAgent.GetLevel()
-	pathPrompts := filepath.Join(utils.GetPromptsDir(), conversationAgent.Topic+"_prompt.yaml")
+	conversationLevel := manager.GetConversationAgent().GetLevel()
+	pathPrompts := filepath.Join(utils.GetPromptsDir(), manager.GetConversationAgent().Topic+"_prompt.yaml")
 	levelPrompt := agents.GetLevelSpecificPrompt(pathPrompts, conversationLevel, "conversational")
 
 	messages := []models.Message{
@@ -137,9 +135,9 @@ func (cw *ChatbotWeb) handleStream(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	if len(conversationAgent.GetConversationHistory()) > 0 {
-		recentHistory := conversationAgent.GetConversationHistory()
-		if len(recentHistory) > 6 {
+	if len(manager.GetHistoryManager().GetConversationHistory()) > 0 {
+		recentHistory := manager.GetHistoryManager().GetConversationHistory()
+		if len(recentHistory) > 0 {
 			recentHistory = recentHistory[len(recentHistory)-6:]
 		}
 		messages = append(messages, recentHistory...)
@@ -152,16 +150,20 @@ func (cw *ChatbotWeb) handleStream(w http.ResponseWriter, r *http.Request) {
 
 	streamResponseChan := make(chan models.StreamResponse, 10)
 	done := make(chan bool)
-	evaluationChan := make(chan map[string]interface{}, 1)
+	evaluationChan := make(chan map[string]any, 1)
 
-	// Run evaluation in parallel (non-blocking)
+	// Record user's message first
+	manager.GetHistoryManager().AddMessage(models.MessageRoleUser, userMessage)
+	// manager.GetHistoryManager().EnforceMax(20)
+
+	// Run evaluation in parallel (non-blocking) and attach to the exact user message index
 	evaluateAgent, evalExists := manager.GetAgent("EvaluateAgent")
 	if evalExists {
 		go func() {
 			defer close(evaluationChan)
 
 			lastAIMessage := ""
-			history := conversationAgent.GetConversationHistory()
+			history := manager.GetHistoryManager().GetConversationHistory()
 			for i := len(history) - 1; i >= 0; i-- {
 				if history[i].Role == models.MessageRoleAssistant {
 					lastAIMessage = history[i].Content
@@ -179,11 +181,15 @@ func (cw *ChatbotWeb) handleStream(w http.ResponseWriter, r *http.Request) {
 			evaluateResponse := evaluateAgent.ProcessTask(evaluateJob)
 			if evaluateResponse.Success {
 				utils.PrintInfo("Evaluation successful, preparing to send to client")
-				var evaluationMap map[string]interface{}
+				var evaluationMap map[string]any
 				if err := json.Unmarshal([]byte(evaluateResponse.Result), &evaluationMap); err == nil {
 					utils.PrintInfo("Sending evaluation to channel")
 					evaluationChan <- evaluationMap
 					utils.PrintInfo("Evaluation sent to channel successfully")
+					// Attach parsed evaluation to the most recent user message
+					if parsed, err := agents.ParseEvaluationResponse(evaluateResponse.Result); err == nil {
+						manager.GetHistoryManager().UpdateLastEvaluation(parsed)
+					}
 				} else {
 					utils.PrintError(fmt.Sprintf("Failed to unmarshal evaluation: %v", err))
 				}
@@ -196,10 +202,10 @@ func (cw *ChatbotWeb) handleStream(w http.ResponseWriter, r *http.Request) {
 		close(evaluationChan)
 	}
 
-	go conversationAgent.GetClient().ChatCompletionStream(
-		conversationAgent.GetModel(),
-		conversationAgent.GetTemperature(),
-		conversationAgent.GetMaxTokens(),
+	go manager.GetConversationAgent().GetClient().ChatCompletionStream(
+		manager.GetConversationAgent().GetModel(),
+		manager.GetConversationAgent().GetTemperature(),
+		manager.GetConversationAgent().GetMaxTokens(),
 		messages,
 		streamResponseChan,
 		done,
@@ -207,18 +213,25 @@ func (cw *ChatbotWeb) handleStream(w http.ResponseWriter, r *http.Request) {
 
 	var fullResponse strings.Builder
 	evaluationSent := false
+	historyManager := manager.GetHistoryManager()
 
 	for {
 		select {
 		case <-done:
 			aiResponse := fullResponse.String()
-			conversationAgent.SetConversationHistory(append(conversationAgent.GetConversationHistory(),
-				models.Message{Role: models.MessageRoleUser, Content: userMessage}))
-			conversationAgent.SetConversationHistory(append(conversationAgent.GetConversationHistory(),
-				models.Message{Role: models.MessageRoleAssistant, Content: aiResponse}))
+			// Update the most recent AI message or create new one if none exists
+			historyManager.UpdateLastMessage(models.MessageRoleAssistant, aiResponse)
 
-			if len(conversationAgent.GetConversationHistory()) > 20 {
-				conversationAgent.SetConversationHistory(conversationAgent.GetConversationHistory()[2:])
+			// Generate suggestions for the AI message and attach to most recent AI message
+			if suggestionAgent, ok := manager.GetAgent("SuggestionAgent"); ok {
+				suggestionJob := models.JobRequest{Task: "suggestion", LastAIMessage: aiResponse}
+				suggestionResponse := suggestionAgent.ProcessTask(suggestionJob)
+				if suggestionResponse.Success {
+					var suggestion models.SuggestionResponse
+					if err := json.Unmarshal([]byte(suggestionResponse.Result), &suggestion); err == nil {
+						historyManager.UpdateLastSuggestion(&suggestion)
+					}
+				}
 			}
 
 			// Wait for evaluation if not yet received
@@ -227,7 +240,7 @@ func (cw *ChatbotWeb) handleStream(w http.ResponseWriter, r *http.Request) {
 				evalMap, ok := <-evaluationChan
 				if ok && evalMap != nil {
 					utils.PrintInfo("Received evaluation in done handler, sending to client")
-					evalData := map[string]interface{}{
+					evalData := map[string]any{
 						"done": false,
 						"type": "evaluation",
 						"data": evalMap,
@@ -243,7 +256,7 @@ func (cw *ChatbotWeb) handleStream(w http.ResponseWriter, r *http.Request) {
 			}
 
 			// Send final done event
-			doneData := map[string]interface{}{
+			doneData := map[string]any{
 				"done": true,
 				"type": "done",
 			}
@@ -256,7 +269,7 @@ func (cw *ChatbotWeb) handleStream(w http.ResponseWriter, r *http.Request) {
 		case evalMap, ok := <-evaluationChan:
 			if ok && evalMap != nil && !evaluationSent {
 				utils.PrintInfo("Sending evaluation to client via SSE")
-				evalData := map[string]interface{}{
+				evalData := map[string]any{
 					"done": false,
 					"type": "evaluation",
 					"data": evalMap,
@@ -275,7 +288,7 @@ func (cw *ChatbotWeb) handleStream(w http.ResponseWriter, r *http.Request) {
 				content := streamResponse.Choices[0].Delta.Content
 				fullResponse.WriteString(content)
 
-				data := map[string]interface{}{
+				data := map[string]any{
 					"content": content,
 					"done":    false,
 					"type":    "message",
@@ -358,7 +371,7 @@ func (cw *ChatbotWeb) handleCreateSession(w http.ResponseWriter, r *http.Request
 	response := manager.ProcessJob(conversationJob)
 
 	conversationAgent := manager.GetConversationAgent()
-	stats := conversationAgent.GetConversationStats()
+	stats := manager.GetHistoryManager().GetConversationStats()
 
 	json.NewEncoder(w).Encode(ChatResponse{
 		Success:   response.Success,
@@ -500,7 +513,7 @@ func (cw *ChatbotWeb) handleSavePrompt(w http.ResponseWriter, r *http.Request) {
 		conversationAgent := manager.GetConversationAgent()
 		if conversationAgent.Topic == req.Topic {
 			shouldReset = true
-			conversationAgent.ResetConversation()
+			manager.GetHistoryManager().ResetConversation()
 		}
 	}
 	cw.mu.Unlock()
@@ -777,7 +790,7 @@ func (cw *ChatbotWeb) handleGetSuggestions(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	var suggestionsMap map[string]interface{}
+	var suggestionsMap map[string]any
 	if err := json.Unmarshal([]byte(suggestionResponse.Result), &suggestionsMap); err != nil {
 		json.NewEncoder(w).Encode(ChatResponse{
 			Success: false,

@@ -11,6 +11,7 @@ import (
 var conversationPromptMemCache = make(map[string]PromptConfig)
 var suggestionPromptMemCache *SuggestionPromptConfig
 var evaluatePromptMemCache *EvaluatePromptConfig
+var assessmentPromptMemCache *AssessmentPromptConfig
 
 type PromptConfig struct {
 	ConversationLevels map[string]LevelConfig `yaml:"conversation_levels"`
@@ -45,6 +46,10 @@ type EvaluatePromptConfig struct {
 	EvaluateAgent EvaluateAgentConfig `yaml:"evaluate_agent"`
 }
 
+type AssessmentPromptConfig struct {
+	AssessmentAgent AssessmentAgentConfig `yaml:"assessment_agent"`
+}
+
 type EvaluateAgentConfig struct {
 	LLM                LLMSettings                    `yaml:"llm"`
 	BasePrompt         string                         `yaml:"base_prompt"`
@@ -64,6 +69,12 @@ type EvaluateCriteriaConfig struct {
 	Excellent        string `yaml:"excellent"`
 	Good             string `yaml:"good"`
 	NeedsImprovement string `yaml:"needs_improvement"`
+}
+
+type AssessmentAgentConfig struct {
+	LLM                LLMSettings `yaml:"llm"`
+	BasePrompt         string      `yaml:"base_prompt"`
+	UserPromptTemplate string      `yaml:"user_prompt_template"`
 }
 
 type LLMSettings struct {
@@ -214,4 +225,28 @@ func LoadEvaluateConfig() (*EvaluatePromptConfig, error) {
 
 	evaluatePromptMemCache = &config
 	return evaluatePromptMemCache, nil
+}
+
+func LoadAssessmentConfig() (*AssessmentPromptConfig, error) {
+	if assessmentPromptMemCache != nil {
+		return assessmentPromptMemCache, nil
+	}
+
+	path := filepath.Join(GetPromptsDir(), "_assessment_prompt.yaml")
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return nil, fmt.Errorf("assessment config file not found: %s", path)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read assessment config file: %w", err)
+	}
+
+	var config AssessmentPromptConfig
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse assessment YAML config: %w", err)
+	}
+
+	assessmentPromptMemCache = &config
+	return assessmentPromptMemCache, nil
 }

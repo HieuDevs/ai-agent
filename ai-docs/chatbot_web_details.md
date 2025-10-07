@@ -8,14 +8,14 @@ ChatbotWeb provides a complete web-based interface for the English conversation 
 ### Main Structure
 ```go
 type ChatbotWeb struct {
-    manager *AgentManager
-    mu      sync.Mutex
-    apiKey  string
+    sessions map[string]*managers.AgentManager
+    mu       sync.Mutex
+    apiKey   string
 }
 ```
 
 **Fields:**
-- `manager` - Reference to AgentManager for conversation handling
+- `sessions` - Map of session IDs to AgentManager instances
 - `mu` - Mutex for thread-safe session management
 - `apiKey` - OpenRouter API key
 
@@ -24,25 +24,30 @@ type ChatbotWeb struct {
 #### ChatRequest
 ```go
 type ChatRequest struct {
-    Message string `json:"message"`
-    Action  string `json:"action"`
-    Topic   string `json:"topic,omitempty"`
-    Level   string `json:"level,omitempty"`
+    Message   string `json:"message"`
+    Action    string `json:"action"`
+    Topic     string `json:"topic,omitzero"`
+    Level     string `json:"level,omitzero"`
+    Language  string `json:"language,omitzero"`
+    SessionID string `json:"session_id,omitzero"`
 }
 ```
 
 #### ChatResponse
 ```go
 type ChatResponse struct {
-    Success bool          `json:"success"`
-    Message string        `json:"message"`
-    Stats   interface{}   `json:"stats,omitempty"`
-    Level   string        `json:"level,omitempty"`
-    Topic   string        `json:"topic,omitempty"`
-    Topics  []string      `json:"topics,omitempty"`
-    History []ChatMessage `json:"history,omitempty"`
-    Prompts []PromptInfo  `json:"prompts,omitempty"`
-    Content string        `json:"content,omitempty"`
+    Success     bool          `json:"success"`
+    Message     string        `json:"message,omitzero"`
+    Stats       any           `json:"stats,omitzero"`
+    Level       string        `json:"level,omitzero"`
+    Topic       string        `json:"topic,omitzero"`
+    Topics      []string      `json:"topics,omitzero"`
+    History     []ChatMessage `json:"history,omitzero"`
+    Prompts     []PromptInfo  `json:"prompts,omitzero"`
+    Content     string        `json:"content,omitzero"`
+    Evaluation  any           `json:"evaluation,omitzero"`
+    Suggestions any           `json:"suggestions,omitzero"`
+    SessionID   string        `json:"session_id,omitzero"`
 }
 ```
 
@@ -53,41 +58,47 @@ Serves the embedded HTML chat interface.
 - **Response:** Full HTML page with inline CSS and JavaScript
 - **Features:** Complete chat UI with all client-side functionality
 
-### 2. POST /api/chat
-Handles various chat actions.
+### 2. POST /api/create-session
+Create a new conversation session with specific topic and level.
 
-**Actions:**
-- `init` - Initialize conversation with starter message
-- `stats` - Get conversation statistics
-- `reset` - Reset conversation history and restart
-- `set_level` - Change conversation level
-- `history` - Retrieve full conversation history
-
-**Example Request:**
+**Request:**
 ```json
 {
-    "action": "reset"
+    "topic": "sports",
+    "level": "intermediate",
+    "language": "Vietnamese",
+    "session_id": "web_1234567890"
 }
 ```
 
-**Example Response:**
+**Response:**
 ```json
 {
     "success": true,
-    "message": "Hello! Let's talk!",
+    "message": "Let's talk about sports!",
     "stats": {
-        "total_messages": 2,
-        "user_messages": 1,
+        "total_messages": 1,
+        "user_messages": 0,
         "bot_messages": 1
-    }
+    },
+    "level": "intermediate",
+    "topic": "Sports",
+    "session_id": "web_1234567890"
 }
 ```
+
+**Features:**
+- Creates new AgentManager instance per session
+- Includes starter message from conversation agent
+- Supports session reuse with existing session_id
+- Defaults to Vietnamese language if not specified
 
 ### 3. GET /api/stream
 Server-sent events endpoint for streaming AI responses.
 
 **Query Parameters:**
 - `message` - User's message (URL encoded)
+- `session_id` - Session identifier
 
 **Response Format:**
 ```javascript
@@ -101,19 +112,21 @@ data: {"type": "done", "done": true}
 1. **evaluation** - User message evaluation (appears in parallel with message streaming)
    - Contains: `status`, `short_description`, `long_description`, `correct`
    - Evaluates the user's message immediately after submission
+   - Attached to conversation history via `UpdateLastEvaluation`
 2. **message** - Streaming AI response chunks
    - Contains: `content` field with partial text
 3. **done** - Final event marking completion
 
-**Note:** Suggestions are no longer sent via SSE. They are now fetched on-demand via `/api/suggestions` endpoint.
+**Note:** Suggestions are generated and attached to conversation history but not sent via SSE. They are fetched on-demand via `/api/suggestions` endpoint.
 
 **Implementation Details:**
 - Sets headers for SSE (text/event-stream)
 - Uses flusher for real-time streaming
 - Evaluates user message in parallel goroutine (non-blocking)
 - Evaluation can arrive at any time during streaming via select statement
-- Maintains conversation history
-- Limits context to last 6 messages
+- Maintains conversation history through ConversationHistoryManager
+- Uses full conversation history for context
+- Generates suggestions and attaches to history after AI response
 
 **Performance Features:**
 - **Parallel execution**: Evaluation runs in background goroutine while AI streams
@@ -121,24 +134,7 @@ data: {"type": "done", "done": true}
 - **Multi-channel select**: Handles evaluation, streaming, and completion events simultaneously
 - **Progressive rendering**: Evaluation appears as soon as ready, may be before/during/after AI response
 
-### 4. POST /api/init
-Initialize session state.
-
-**Response:**
-```json
-{
-    "success": true,
-    "level": "intermediate",
-    "topic": "Sports",
-    "stats": {
-        "total_messages": 0,
-        "user_messages": 0,
-        "bot_messages": 0
-    }
-}
-```
-
-### 5. GET /api/topics
+### 4. GET /api/topics
 List all available conversation topics (excludes system prompts starting with `_`).
 
 **Response:**
@@ -155,40 +151,16 @@ List all available conversation topics (excludes system prompts starting with `_
 - Scans `/prompts/` directory
 - Looks for files matching `*_prompt.yaml`
 - Extracts topic names
+- Excludes files starting with `_`
 
-### 6. POST /api/create-session
-Create a new conversation session with specific topic and level.
-
-**Request:**
-```json
-{
-    "topic": "sports",
-    "level": "intermediate"
-}
-```
-
-**Response:**
-```json
-{
-    "success": true,
-    "message": "Let's talk about sports!",
-    "stats": {...},
-    "level": "intermediate",
-    "topic": "Sports"
-}
-```
-
-**Features:**
-- Includes starter message from conversation agent
-- User can click "💡 Hint" button (in input area next to Send button) to get suggestions on-demand
-
-### 7. POST /api/suggestions
+### 5. POST /api/suggestions
 Get vocabulary suggestions on-demand for a specific AI message.
 
 **Request:**
 ```json
 {
-    "message": "Hello! What's your favorite sport?"
+    "message": "Hello! What's your favorite sport?",
+    "session_id": "web_1234567890"
 }
 ```
 
@@ -209,11 +181,12 @@ Get vocabulary suggestions on-demand for a specific AI message.
 **Features:**
 - Only called when user clicks "💡 Hint" button (in input area)
 - Button is located next to the Send button for easy access
-- Fetches suggestions based on the LAST bot message content
+- Fetches suggestions based on the provided message content
 - Displays clickable vocabulary options below the last bot message
 - Removes previous suggestions if hint button clicked again
+- Requires valid session_id
 
-### 8. GET /api/prompts
+### 6. GET /api/prompts
 List all available prompt files (including system prompts starting with `_`).
 
 **Response:**
@@ -239,7 +212,7 @@ List all available prompt files (including system prompts starting with `_`).
 
 **Note:** This endpoint returns ALL prompt files, including system prompts starting with `_`. These are shown in the Prompt Files section for editing.
 
-### 9. GET /api/prompt/content
+### 7. GET /api/prompt/content
 Get content of a specific prompt file.
 
 **Query Parameters:**
@@ -253,7 +226,7 @@ Get content of a specific prompt file.
 }
 ```
 
-### 10. POST /api/prompt/save
+### 8. POST /api/prompt/save
 Save edited prompt file.
 
 **Request:**
@@ -275,8 +248,9 @@ Save edited prompt file.
 **Behavior:**
 - Saves prompt to file
 - If current session uses edited topic, resets conversation
+- Resets all sessions using the edited topic
 
-### 11. POST /api/prompt/create
+### 9. POST /api/prompt/create
 Create new prompt file.
 
 **Request:**
@@ -299,8 +273,9 @@ Create new prompt file.
 **Features:**
 - If content is empty, generates default template
 - Validates topic doesn't already exist
+- Creates basic conversation levels structure
 
-### 12. POST /api/prompt/delete
+### 10. POST /api/prompt/delete
 Delete a prompt file.
 
 **Request:**
@@ -318,7 +293,7 @@ Delete a prompt file.
 }
 ```
 
-### 13. POST /api/translate
+### 11. POST /api/translate
 Translate text to Vietnamese.
 
 **Request:**

@@ -21,13 +21,6 @@ type EvaluateAgent struct {
 	config      *utils.EvaluatePromptConfig
 }
 
-type EvaluationResponse struct {
-	Status           string `json:"status"`
-	ShortDescription string `json:"short_description"`
-	LongDescription  string `json:"long_description"`
-	Correct          string `json:"correct"`
-}
-
 func NewEvaluateAgent(
 	client client.Client,
 	level models.ConversationLevel,
@@ -310,11 +303,11 @@ func (ea *EvaluateAgent) getResponseWithFormat(messages []models.Message, respon
 }
 
 func (ea *EvaluateAgent) DisplayEvaluation(jsonResponse string) {
-	var evaluation EvaluationResponse
+	var evaluation models.EvaluationResponse
 
 	cleanJSON := strings.TrimSpace(jsonResponse)
-	if strings.HasPrefix(cleanJSON, "```json") {
-		cleanJSON = strings.TrimPrefix(cleanJSON, "```json")
+	if after, ok := strings.CutPrefix(cleanJSON, "```json"); ok {
+		cleanJSON = after
 		cleanJSON = strings.TrimSuffix(cleanJSON, "```")
 		cleanJSON = strings.TrimSpace(cleanJSON)
 	} else if strings.HasPrefix(cleanJSON, "```") {
@@ -367,20 +360,17 @@ func (ea *EvaluateAgent) GetLevel() models.ConversationLevel {
 	return ea.level
 }
 
-func ParseEvaluationResponse(jsonResponse string) (*EvaluationResponse, error) {
+func ParseEvaluationResponse(jsonResponse string) (*models.EvaluationResponse, error) {
 	cleanJSON := strings.TrimSpace(jsonResponse)
-
-	if strings.HasPrefix(cleanJSON, "```json") {
-		cleanJSON = strings.TrimPrefix(cleanJSON, "```json")
-		cleanJSON = strings.TrimSuffix(cleanJSON, "```")
-		cleanJSON = strings.TrimSpace(cleanJSON)
-	} else if strings.HasPrefix(cleanJSON, "```") {
-		cleanJSON = strings.TrimPrefix(cleanJSON, "```")
-		cleanJSON = strings.TrimSuffix(cleanJSON, "```")
-		cleanJSON = strings.TrimSpace(cleanJSON)
+	if after, ok := strings.CutPrefix(cleanJSON, "```json"); ok {
+		cleanJSON = after
+	} else if after, ok := strings.CutPrefix(cleanJSON, "```"); ok {
+		cleanJSON = after
 	}
+	cleanJSON = strings.TrimSuffix(cleanJSON, "```")
+	cleanJSON = strings.TrimSpace(cleanJSON)
 
-	var evaluation EvaluationResponse
+	var evaluation models.EvaluationResponse
 	err := json.Unmarshal([]byte(cleanJSON), &evaluation)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse evaluation JSON: %w", err)

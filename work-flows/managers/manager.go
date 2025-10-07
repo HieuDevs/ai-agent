@@ -8,24 +8,27 @@ import (
 	"ai-agent/work-flows/agents"
 	"ai-agent/work-flows/client"
 	"ai-agent/work-flows/models"
+	"ai-agent/work-flows/services"
 
 	"github.com/fatih/color"
 )
 
 type AgentManager struct {
-	apiClient  client.Client
-	agents     map[string]models.Agent
-	currentJob *models.JobRequest
-	sessionId  string
+	apiClient      client.Client
+	agents         map[string]models.Agent
+	currentJob     *models.JobRequest
+	sessionId      string
+	historyManager *services.ConversationHistoryManager
 }
 
 func NewManager(apiKey string, level models.ConversationLevel, topic string, language string, sessionId string) *AgentManager {
 	client := client.NewOpenRouterClient(apiKey)
 
 	manager := &AgentManager{
-		apiClient: client,
-		agents:    make(map[string]models.Agent),
-		sessionId: sessionId,
+		apiClient:      client,
+		agents:         make(map[string]models.Agent),
+		sessionId:      sessionId,
+		historyManager: services.NewConversationHistoryManager(),
 	}
 
 	manager.RegisterAgents(level, topic, language)
@@ -33,13 +36,15 @@ func NewManager(apiKey string, level models.ConversationLevel, topic string, lan
 }
 
 func (m *AgentManager) RegisterAgents(level models.ConversationLevel, topic string, language string) {
-	conversationAgent := agents.NewConversationAgent(m.apiClient, level, topic)
+	conversationAgent := agents.NewConversationAgent(m.apiClient, level, topic, m.historyManager)
 	suggestionAgent := agents.NewSuggestionAgent(m.apiClient, level, topic, language)
 	evaluateAgent := agents.NewEvaluateAgent(m.apiClient, level, topic, language)
+	assessmentAgent := agents.NewAssessmentAgent(m.apiClient, language)
 
 	m.agents[conversationAgent.Name()] = conversationAgent
 	m.agents[suggestionAgent.Name()] = suggestionAgent
 	m.agents[evaluateAgent.Name()] = evaluateAgent
+	m.agents[assessmentAgent.Name()] = assessmentAgent
 
 	utils.PrintSuccess("Agent Manager initialized with agents:")
 	for _, agent := range m.agents {
@@ -75,12 +80,24 @@ func (m *AgentManager) GetAgent(name string) (models.Agent, bool) {
 	return agent, exists
 }
 
+func (m *AgentManager) GetHistoryManager() *services.ConversationHistoryManager {
+	return m.historyManager
+}
+
 func (m *AgentManager) GetConversationAgent() *agents.ConversationAgent {
 	agent, exists := m.GetAgent("ConversationAgent")
 	if !exists {
 		return nil
 	}
 	return agent.(*agents.ConversationAgent)
+}
+
+func (m *AgentManager) GetAssessmentAgent() *agents.AssessmentAgent {
+	agent, exists := m.GetAgent("AssessmentAgent")
+	if !exists {
+		return nil
+	}
+	return agent.(*agents.AssessmentAgent)
 }
 
 func (m *AgentManager) GetSessionId() string {
@@ -99,6 +116,11 @@ func (m *AgentManager) ProcessJob(job models.JobRequest) *models.JobResponse {
 			Result:    "",
 			Error:     err.Error(),
 		}
+	}
+
+	// Special handling for AssessmentAgent - it needs the history manager
+	if agent.Name() == "AssessmentAgent" {
+		job.Metadata = m.historyManager
 	}
 
 	utils.PrintInfo(fmt.Sprintf("Processing job with agent: %s", agent.Name()))

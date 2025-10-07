@@ -7,26 +7,26 @@ ConversationAgent is the core agent responsible for handling English conversatio
 
 ```go
 type ConversationAgent struct {
-    name                string
-    conversationHistory []models.Message
-    model               string
-    temperature         float64
-    maxTokens           int
-    Topic               string
-    client              client.Client
-    level               models.ConversationLevel
+    name        string
+    model       string
+    temperature float64
+    maxTokens   int
+    Topic       string
+    client      client.Client
+    level       models.ConversationLevel
+    history     *services.ConversationHistoryManager
 }
 ```
 
 **Fields:**
 - `name` - Agent identifier ("ConversationAgent")
-- `conversationHistory` - Sliding window of conversation messages
 - `model` - LLM model name (e.g., "openai/gpt-4o-mini")
 - `temperature` - LLM temperature setting (creativity level)
 - `maxTokens` - Maximum response length
 - `Topic` - Conversation topic (e.g., "sports", "music")
 - `client` - OpenRouter API client
 - `level` - Current conversation proficiency level
+- `history` - Conversation history manager service
 
 ## Initialization
 
@@ -36,13 +36,14 @@ func NewConversationAgent(
     client client.Client,
     level models.ConversationLevel,
     topic string,
+    history *services.ConversationHistoryManager,
 ) *ConversationAgent
 ```
 
 **Process:**
 1. Validates conversation level (defaults to intermediate if invalid)
-2. Loads LLM settings from topic prompt file
-3. Initializes empty conversation history
+2. Loads LLM settings from topic prompt file using `utils.GetLLMSettingsFromLevel`
+3. Uses provided conversation history manager
 4. Returns configured agent
 
 **LLM Settings:**
@@ -75,9 +76,10 @@ func (ca *ConversationAgent) generateConversationStarter() *models.JobResponse
 ```
 
 **Process:**
-1. Loads "starter" prompt from YAML file
-2. Adds to conversation history
-3. Returns as JobResponse
+1. Loads "starter" prompt from YAML file using `GetLevelSpecificPrompt`
+2. Adds to conversation history via `ca.history.AddToHistory`
+3. Prints starter message to console
+4. Returns as JobResponse
 
 **Example Starters by Level:**
 - Beginner: "Hi! Let's talk about sports!"
@@ -97,18 +99,18 @@ func (ca *ConversationAgent) generateConversationalResponse(
 ```
 
 **Process:**
-1. Load level-specific conversational prompt
+1. Load level-specific conversational prompt using `GetLevelSpecificPrompt`
 2. Build message context:
    - System message with conversational guidelines
-   - Recent history (last 6 messages)
+   - Full conversation history from `ca.history.GetConversationHistory()`
    - Current user message
-3. Get streaming response from LLM
-4. Add user message and response to history
+3. Get streaming response from LLM using `getStreamingResponse`
+4. Add user message and response to history via `ca.history.AddToHistory`
 5. Return JobResponse
 
 **Context Window:**
-- Uses last 6 messages for context
-- Prevents token overflow
+- Uses full conversation history (managed by ConversationHistoryManager)
+- History manager handles message limits and sliding windows
 - Maintains conversation coherence
 
 ### 4. getStreamingResponse
@@ -138,46 +140,19 @@ func (ca *ConversationAgent) getStreamingResponse(
 
 ## History Management
 
-### addToHistory
-```go
-func (ca *ConversationAgent) addToHistory(role models.MessageRole, content string)
-```
+History management is now handled by the `ConversationHistoryManager` service:
 
-**Behavior:**
-- Appends message to history
-- If history exceeds 20 messages, removes oldest 2
-- Maintains sliding window of conversation
+### ConversationHistoryManager Integration
+- `ca.history.AddToHistory(role, content)` - Add messages to history
+- `ca.history.GetConversationHistory()` - Get full conversation history
+- `ca.history.GetConversationStats()` - Get conversation statistics
+- `ca.history.ResetConversation()` - Clear conversation history
 
-**Rationale:**
-- 20 message limit prevents memory bloat
-- Removes 2 at a time to keep user/assistant pairs
-
-### getRecentHistory
-```go
-func (ca *ConversationAgent) getRecentHistory(maxMessages int) []models.Message
-```
-
-**Returns:**
-- Last N messages from history
-- Used to build LLM context (typically 6)
-
-### GetFullConversationHistory
-```go
-func (ca *ConversationAgent) GetFullConversationHistory() []models.Message
-```
-
-**Returns:**
-- Complete conversation history
-- Used for export and display features
-
-### ResetConversation
-```go
-func (ca *ConversationAgent) ResetConversation()
-```
-
-**Effect:**
-- Clears all conversation history
-- Useful for starting fresh topic
+**Benefits:**
+- Centralized history management
+- Consistent across all agents
+- Better separation of concerns
+- Enhanced features like statistics and export
 
 ## Level Management
 
@@ -241,9 +216,12 @@ func (ca *ConversationAgent) GetLevelSpecificCapabilities() []string
 
 ## Statistics and Metrics
 
-### GetConversationStats
+### Statistics and History Access
+Statistics and history are now accessed through the ConversationHistoryManager:
+
 ```go
-func (ca *ConversationAgent) GetConversationStats() map[string]int
+stats := ca.history.GetConversationStats()
+history := ca.history.GetConversationHistory()
 ```
 
 **Returns:**
@@ -259,15 +237,7 @@ func (ca *ConversationAgent) GetConversationStats() map[string]int
 - Display progress to user
 - Track engagement metrics
 - Analyze conversation patterns
-
-### countMessagesByRole
-```go
-func (ca *ConversationAgent) countMessagesByRole(role models.MessageRole) int
-```
-
-**Internal Helper:**
-- Counts messages by role type
-- Used by GetConversationStats
+- Export conversation data
 
 ## Translation Integration
 

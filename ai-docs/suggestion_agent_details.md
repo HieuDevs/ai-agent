@@ -1,14 +1,15 @@
 # SuggestionAgent Detailed Documentation
 
 ## Overview
-SuggestionAgent provides vocabulary suggestions and sentence starters to help English learners respond in conversations. After each AI response, it generates contextual suggestions including a leading sentence and vocabulary options.
+SuggestionAgent provides vocabulary suggestions and sentence starters to help English learners respond in conversations. It generates contextual suggestions including a leading sentence and vocabulary options based on the AI's last message.
 
 ## Purpose
 The agent helps learners by:
 - Providing sentence structure guidance
-- Suggesting relevant vocabulary words
+- Suggesting relevant vocabulary words with emojis
 - Offering multiple response options
 - Adapting to learner's proficiency level
+- Supporting multi-language instructions
 
 ## Structure
 
@@ -146,7 +147,7 @@ func (sa *SuggestionAgent) generateSuggestions(task models.JobRequest) *models.J
 ```
 
 **Process:**
-1. Extract last AI message from conversation (fallback to default if empty)
+1. Extract last AI message from task (required for context)
 2. Build system prompt based on level (creative and flexible guidelines)
 3. Create user prompt with AI's message as context
 4. Build JSON Schema for structured output (OpenRouter format)
@@ -162,6 +163,7 @@ func (sa *SuggestionAgent) generateSuggestions(task models.JobRequest) *models.J
 - JSON schema enforces exact format with `strict: true`
 - Guarantees valid JSON response without parsing errors
 - Each vocab option includes relevant emoji for visual enhancement
+- Leading sentence is translated to target language, vocab options remain in English
 
 ### 3. buildSuggestionPrompt
 Creates level-specific system prompt from YAML configuration.
@@ -273,6 +275,7 @@ Vocabulary options:
 - Parses JSON to SuggestionResponse
 - Formats with visual separators
 - Handles parsing errors gracefully
+- Shows leading sentence and numbered vocabulary options with emojis
 
 ### 5. ParseSuggestionResponse
 Utility function to parse suggestion JSON.
@@ -705,7 +708,7 @@ type ResponseFormat struct {
 type JSONSchemaSpec struct {
     Name   string                 `json:"name"`
     Strict bool                   `json:"strict"`
-    Schema map[string]interface{} `json:"schema"`
+    Schema map[string]any `json:"schema"`
 }
 ```
 
@@ -734,23 +737,23 @@ func (oc *openRouterClient) ChatCompletionWithFormat(
 #### SuggestionAgent JSON Schema Builder
 ```go
 func (sa *SuggestionAgent) buildResponseFormat() *models.ResponseFormat {
-    schema := map[string]interface{}{
+    schema := map[string]any{
         "type": "object",
-        "properties": map[string]interface{}{
-            "leading_sentence": map[string]interface{}{
+        "properties": map[string]any{
+            "leading_sentence": map[string]any{
                 "type":        "string",
                 "description": "A brief, conversational sentence guiding how to respond",
             },
-            "vocab_options": map[string]interface{}{
+            "vocab_options": map[string]any{
                 "type": "array",
-                "items": map[string]interface{}{
+                "items": map[string]any{
                     "type": "object",
-                    "properties": map[string]interface{}{
-                        "text": map[string]interface{}{
+                    "properties": map[string]any{
+                        "text": map[string]any{
                             "type":        "string",
                             "description": "The vocabulary word or phrase",
                         },
-                        "emoji": map[string]interface{}{
+                        "emoji": map[string]any{
                             "type":        "string",
                             "description": "A relevant emoji that matches the meaning",
                         },

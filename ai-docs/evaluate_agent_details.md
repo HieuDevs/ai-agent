@@ -166,11 +166,12 @@ func (ea *EvaluateAgent) generateEvaluation(task models.JobRequest) *models.JobR
 
 **Process:**
 1. Extract user message and AI's previous message from task
-2. Build system prompt based on level (evaluation criteria and guidelines)
-3. Create user prompt with both messages and context (with 2-step evaluation instructions)
-4. Build JSON Schema for structured output (OpenRouter format)
-5. Call LLM with `ChatCompletionWithFormat` using strict JSON schema
-6. Return validated JSON response
+2. Validate user message is not empty
+3. Build system prompt based on level (evaluation criteria and guidelines)
+4. Create user prompt with both messages and context
+5. Build JSON Schema for structured output (OpenRouter format)
+6. Call LLM with `ChatCompletionWithFormat` using strict JSON schema
+7. Return validated JSON response
 
 **Prompt Structure:**
 - System: Level-specific evaluation criteria and guidelines with **relevance-first priority**
@@ -188,6 +189,7 @@ func (ea *EvaluateAgent) generateEvaluation(task models.JobRequest) *models.JobR
 - **Relevance is the PRIMARY criterion** - irrelevant = needs_improvement (regardless of grammar)
 - Feedback translated to target language for better understanding
 - Lower temperature (0.3) ensures consistent evaluation
+- Returns error if user message is empty
 
 ### 3. buildEvaluatePrompt
 Creates level-specific system prompt from YAML configuration.
@@ -288,6 +290,8 @@ Bạn đã sử dụng cấu trúc câu tốt. Tuy nhiên, có một lỗi nhỏ
 bạn nên dùng <b>"have been playing"</b> thay vì <b>"am playing"</b> 
 vì bạn đang nói về một hành động bắt đầu từ quá khứ và vẫn tiếp tục 
 đến hiện tại.
+
+✅ Corrected: I have been playing soccer for 5 years.
 ────────────────────────────────────────
 ```
 
@@ -296,14 +300,14 @@ vì bạn đang nói về một hành động bắt đầu từ quá khứ và v
 - Cleans JSON response (removes code blocks if present)
 - Parses JSON to EvaluationResponse
 - Formats with visual separators
-- Shows corrected version only for "needs_improvement"
+- Shows corrected version for all evaluations
 - Handles parsing errors gracefully
 
 ### 5. ParseEvaluationResponse
 Utility function to parse evaluation JSON.
 
 ```go
-func ParseEvaluationResponse(jsonResponse string) (*EvaluationResponse, error)
+func ParseEvaluationResponse(jsonResponse string) (*models.EvaluationResponse, error)
 ```
 
 **Process:**
@@ -316,6 +320,7 @@ func ParseEvaluationResponse(jsonResponse string) (*EvaluationResponse, error)
 - Web API integration
 - Testing
 - Custom display formatting
+- Integration with other agents
 
 ## Level Management
 
