@@ -14,6 +14,8 @@ The AssessmentAgent is a specialized agent that analyzes conversation history to
 - **Conversation History Analysis**: Analyzes patterns across multiple interactions
 - **Structured Output**: Uses OpenRouter Structured Outputs for consistent responses
 - **Evaluation Integration**: Factors in previous evaluation feedback
+- **Streaming Assessment**: Real-time progress updates with Vietnamese progress messages
+- **Progress Events**: Detailed progress tracking through different assessment phases
 
 ### ⏳ Pending Features
 
@@ -315,6 +317,113 @@ Vocabulary Suggestions: ["<t>Từ vựng thể thao</t><d>Mở rộng từ vựn
 ```
 
 **Note**: The tips are stored as tagged strings in various formats. Titles are in target language, descriptions mix target language for explanations and English for examples, while phrases and vocabulary words are always in English.
+
+## Streaming Assessment Feature
+
+### Overview
+
+The AssessmentAgent now supports streaming assessment with real-time progress updates. This feature provides users with immediate feedback about the assessment process through Vietnamese progress messages.
+
+### Progress Events
+
+The streaming assessment emits the following progress events:
+
+1. **Level Assessment** (10%): "Đang đánh giá cấp độ ngôn ngữ..."
+2. **Skills Evaluation** (30%): "Đang đánh giá kỹ năng tổng quát..."
+3. **Grammar Analysis** (50%): "Đang phân tích ngữ pháp..."
+4. **Vocabulary Assessment** (70%): "Đang đánh giá từ vựng..."
+5. **Fluency Suggestions** (85%): "Đang tạo gợi ý cải thiện độ trôi chảy..."
+6. **Vocabulary Suggestions** (95%): "Đang tạo gợi ý từ vựng..."
+7. **Completion** (100%): "Đánh giá hoàn thành!"
+
+### Implementation
+
+#### New Types
+
+```go
+type AssessmentProgressEvent struct {
+    Type        string `json:"type"`        // Event type identifier
+    Message     string `json:"message"`     // Vietnamese progress message
+    Progress    int    `json:"progress"`     // Progress percentage (0-100)
+    IsComplete  bool   `json:"is_complete"` // Whether this phase is complete
+}
+
+type AssessmentStreamResponse struct {
+    ProgressEvent *AssessmentProgressEvent `json:"progress_event,omitempty"`
+    FinalResult   string                   `json:"final_result,omitempty"`
+    Error         string                   `json:"error,omitempty"`
+}
+```
+
+#### New Method
+
+```go
+func (aa *AssessmentAgent) GenerateAssessmentStream(
+    historyManager *services.ConversationHistoryManager, 
+    progressChan chan<- models.AssessmentStreamResponse
+)
+```
+
+#### Client Interface Extension
+
+```go
+type Client interface {
+    // ... existing methods ...
+    ChatCompletionWithFormatStream(
+        model string, 
+        temperature float64, 
+        maxTokens int, 
+        messages []models.Message, 
+        responseFormat *models.ResponseFormat, 
+        streamResponse chan<- models.StreamResponse, 
+        done chan<- bool
+    )
+}
+```
+
+### Usage in ChatbotOrchestrator
+
+The streaming assessment is integrated into the CLI interface:
+
+```go
+func (co *ChatbotOrchestrator) showAssessment() {
+    // ... setup code ...
+    
+    // Create progress channel
+    progressChan := make(chan models.AssessmentStreamResponse, 100)
+    
+    // Start streaming assessment
+    go assessmentAgent.GenerateAssessmentStream(historyManager, progressChan)
+    
+    // Handle progress events
+    for response := range progressChan {
+        if response.ProgressEvent != nil {
+            // Display progress with appropriate emoji
+            switch event.Type {
+            case "level_assessment":
+                cyan.Printf("🔍 %s (%d%%)\n", event.Message, event.Progress)
+            case "skills_evaluation":
+                cyan.Printf("📝 %s (%d%%)\n", event.Message, event.Progress)
+            // ... other cases ...
+            }
+        }
+        
+        if response.FinalResult != "" {
+            // Display final assessment results
+            assessmentAgent.DisplayAssessment(response.FinalResult)
+            break
+        }
+    }
+}
+```
+
+### Benefits
+
+- **Real-time Feedback**: Users see immediate progress updates
+- **Better UX**: Vietnamese messages make the process more accessible
+- **Transparency**: Clear indication of what's happening during assessment
+- **Engagement**: Visual progress indicators keep users engaged
+- **Error Handling**: Immediate error reporting if assessment fails
 
 ## CEFR Level Descriptions
 

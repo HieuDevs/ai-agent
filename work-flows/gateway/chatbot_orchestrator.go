@@ -456,19 +456,50 @@ func (co *ChatbotOrchestrator) showAssessment() {
 		return
 	}
 
-	assessmentJob := models.JobRequest{
-		Task:          "assess proficiency level",
-		UserMessage:   "",
-		LastAIMessage: "",
-		Metadata:      historyManager,
-	}
+	yellow := color.New(color.FgYellow, color.Bold)
+	cyan := color.New(color.FgCyan)
+	green := color.New(color.FgGreen)
 
-	utils.PrintInfo("Analyzing conversation history for assessment...")
-	response := assessmentAgent.ProcessTask(assessmentJob)
+	yellow.Println("\n📊 Assessment")
+	cyan.Println("Starting comprehensive assessment...")
 
-	if response.Success {
-		assessmentAgent.DisplayAssessment(response.Result)
-	} else {
-		utils.PrintError(fmt.Sprintf("Assessment failed: %s", response.Error))
+	// Create progress channel
+	progressChan := make(chan models.AssessmentStreamResponse, 100)
+
+	// Start streaming assessment
+	go assessmentAgent.GenerateAssessmentStream(historyManager, progressChan)
+
+	// Handle progress events
+	for response := range progressChan {
+		if response.Error != "" {
+			utils.PrintError(fmt.Sprintf("Assessment failed: %s", response.Error))
+			return
+		}
+
+		if response.ProgressEvent != nil {
+			event := response.ProgressEvent
+			switch event.Type {
+			case "level_assessment":
+				cyan.Printf("🔍 %s (%d%%)\n", event.Message, event.Progress)
+			case "skills_evaluation":
+				cyan.Printf("📝 %s (%d%%)\n", event.Message, event.Progress)
+			case "grammar_tips":
+				cyan.Printf("📚 %s (%d%%)\n", event.Message, event.Progress)
+			case "vocabulary_tips":
+				cyan.Printf("📖 %s (%d%%)\n", event.Message, event.Progress)
+			case "fluency_suggestions":
+				cyan.Printf("💬 %s (%d%%)\n", event.Message, event.Progress)
+			case "vocabulary_suggestions":
+				cyan.Printf("🎯 %s (%d%%)\n", event.Message, event.Progress)
+			case "completed":
+				green.Printf("✅ %s (%d%%)\n", event.Message, event.Progress)
+			}
+		}
+
+		if response.FinalResult != "" {
+			fmt.Println()
+			assessmentAgent.DisplayAssessment(response.FinalResult)
+			break
+		}
 	}
 }

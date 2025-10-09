@@ -188,3 +188,75 @@ func (oc *openRouterClient) ChatCompletionWithFormat(model string, temperature f
 
 	return chatResp.Choices[0].Message.Content, nil
 }
+
+func (oc *openRouterClient) ChatCompletionWithFormatStream(model string, temperature float64, maxTokens int, messages []models.Message, responseFormat *models.ResponseFormat, streamResponse chan<- models.StreamResponse, done chan<- bool) {
+	defer func() { done <- true }()
+
+	reqBody := models.ChatRequest{
+		Model:          model,
+		Messages:       messages,
+		Temperature:    temperature,
+		MaxTokens:      maxTokens,
+		Stream:         true,
+		ResponseFormat: responseFormat,
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		streamResponse <- models.StreamResponse{
+			Error: err.Error(),
+		}
+		return
+	}
+
+	req, err := http.NewRequest("POST", oc.baseURL+"/chat/completions", strings.NewReader(string(jsonData)))
+	if err != nil {
+		streamResponse <- models.StreamResponse{
+			Error: err.Error(),
+		}
+		return
+	}
+
+	req.Header.Set("Authorization", "Bearer "+oc.apiKey)
+	req.Header.Set("Content-Type", ContentTypeHeader)
+
+	resp, err := oc.client.Do(req)
+	if err != nil {
+		streamResponse <- models.StreamResponse{
+			Error: err.Error(),
+		}
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		streamResponse <- models.StreamResponse{
+			Error: fmt.Sprintf("Error: API request failed with status %d", resp.StatusCode),
+		}
+		return
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+
+		if after, ok := strings.CutPrefix(line, "data: "); ok {
+			data := strings.TrimSpace(after)
+
+			if data == "[DONE]" {
+				break
+			}
+
+			var streamResp models.StreamResponse
+			if err := json.Unmarshal([]byte(data), &streamResp); err == nil {
+				streamResponse <- streamResp
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		streamResponse <- models.StreamResponse{
+			Error: fmt.Sprintf("Error reading response: %s", err.Error()),
+		}
+	}
+}

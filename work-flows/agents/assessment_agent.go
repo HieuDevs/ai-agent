@@ -357,6 +357,207 @@ func (aa *AssessmentAgent) getResponseWithFormat(messages []models.Message, resp
 	return response
 }
 
+func (aa *AssessmentAgent) GenerateAssessmentStream(historyManager *services.ConversationHistoryManager, progressChan chan<- models.AssessmentStreamResponse) {
+	defer close(progressChan)
+
+	conversationHistory := historyManager.GetConversationHistory()
+
+	if len(conversationHistory) == 0 {
+		progressChan <- models.AssessmentStreamResponse{
+			Error: "No conversation history available for assessment",
+		}
+		return
+	}
+
+	filteredHistory := aa.filterHistoryForAssessment(conversationHistory)
+
+	if len(filteredHistory) == 0 {
+		progressChan <- models.AssessmentStreamResponse{
+			Error: "No relevant messages found for assessment",
+		}
+		return
+	}
+
+	utils.PrintInfo(fmt.Sprintf("Analyzing %d messages for assessment", len(filteredHistory)))
+
+	// Send progress events for different phases
+	progressChan <- models.AssessmentStreamResponse{
+		ProgressEvent: &models.AssessmentProgressEvent{
+			Type:     "level_assessment",
+			Message:  "Đang đánh giá cấp độ ngôn ngữ...",
+			Progress: 10,
+		},
+	}
+
+	systemPrompt := aa.buildAssessmentPrompt()
+	userPrompt := aa.buildUserPrompt(filteredHistory)
+
+	messages := []models.Message{
+		{
+			Role:    models.MessageRoleSystem,
+			Content: systemPrompt,
+		},
+		{
+			Role:    models.MessageRoleUser,
+			Content: userPrompt,
+		},
+	}
+
+	responseFormat := aa.buildResponseFormat()
+
+	// Use streaming with format
+	streamResponseChan := make(chan models.StreamResponse, 100)
+	doneChan := make(chan bool)
+
+	go aa.client.ChatCompletionWithFormatStream(aa.model, aa.temperature, aa.maxTokens, messages, responseFormat, streamResponseChan, doneChan)
+
+	var fullResponse strings.Builder
+	var progressTracker int = 10
+	var lastProgressUpdate int = 10
+
+	streaming := true
+	for streaming {
+		select {
+		case streamResp := <-streamResponseChan:
+			if streamResp.Error != "" {
+				progressChan <- models.AssessmentStreamResponse{
+					Error: streamResp.Error,
+				}
+				return
+			}
+
+			if len(streamResp.Choices) > 0 && streamResp.Choices[0].Delta.Content != "" {
+				fullResponse.WriteString(streamResp.Choices[0].Delta.Content)
+
+				// Update progress based on response content analysis
+				currentLength := fullResponse.Len()
+				if currentLength > 0 {
+					// Estimate progress based on response length and content
+					progressTracker = aa.estimateProgressFromContent(fullResponse.String())
+
+					// Send progress updates at key milestones
+					if progressTracker >= 30 && lastProgressUpdate < 30 {
+						progressChan <- models.AssessmentStreamResponse{
+							ProgressEvent: &models.AssessmentProgressEvent{
+								Type:     "skills_evaluation",
+								Message:  "Đang đánh giá kỹ năng tổng quát...",
+								Progress: 30,
+							},
+						}
+						lastProgressUpdate = 30
+					} else if progressTracker >= 50 && lastProgressUpdate < 50 {
+						progressChan <- models.AssessmentStreamResponse{
+							ProgressEvent: &models.AssessmentProgressEvent{
+								Type:     "grammar_tips",
+								Message:  "Đang phân tích ngữ pháp...",
+								Progress: 50,
+							},
+						}
+						lastProgressUpdate = 50
+					} else if progressTracker >= 70 && lastProgressUpdate < 70 {
+						progressChan <- models.AssessmentStreamResponse{
+							ProgressEvent: &models.AssessmentProgressEvent{
+								Type:     "vocabulary_tips",
+								Message:  "Đang đánh giá từ vựng...",
+								Progress: 70,
+							},
+						}
+						lastProgressUpdate = 70
+					} else if progressTracker >= 85 && lastProgressUpdate < 85 {
+						progressChan <- models.AssessmentStreamResponse{
+							ProgressEvent: &models.AssessmentProgressEvent{
+								Type:     "fluency_suggestions",
+								Message:  "Đang tạo gợi ý cải thiện độ trôi chảy...",
+								Progress: 85,
+							},
+						}
+						lastProgressUpdate = 85
+					} else if progressTracker >= 95 && lastProgressUpdate < 95 {
+						progressChan <- models.AssessmentStreamResponse{
+							ProgressEvent: &models.AssessmentProgressEvent{
+								Type:     "vocabulary_suggestions",
+								Message:  "Đang tạo gợi ý từ vựng...",
+								Progress: 95,
+							},
+						}
+						lastProgressUpdate = 95
+					}
+				}
+			}
+
+			if len(streamResp.Choices) > 0 && streamResp.Choices[0].FinishReason != nil {
+				streaming = false
+			}
+
+		case <-doneChan:
+			streaming = false
+		}
+	}
+
+	finalResult := fullResponse.String()
+	if finalResult == "" {
+		progressChan <- models.AssessmentStreamResponse{
+			Error: "Failed to generate assessment",
+		}
+		return
+	}
+
+	// Send completion event
+	progressChan <- models.AssessmentStreamResponse{
+		ProgressEvent: &models.AssessmentProgressEvent{
+			Type:       "completed",
+			Message:    "Đánh giá hoàn thành!",
+			Progress:   100,
+			IsComplete: true,
+		},
+	}
+
+	// Send final result
+	progressChan <- models.AssessmentStreamResponse{
+		FinalResult: finalResult,
+	}
+}
+
+func (aa *AssessmentAgent) estimateProgressFromContent(content string) int {
+	// Analyze the JSON content to estimate progress
+	content = strings.ToLower(content)
+
+	// Check for different sections in the JSON response
+	hasLevel := strings.Contains(content, "\"level\"")
+	hasGeneralSkills := strings.Contains(content, "\"general_skills\"")
+	hasGrammarTips := strings.Contains(content, "\"grammar_tips\"")
+	hasVocabularyTips := strings.Contains(content, "\"vocabulary_tips\"")
+	hasFluencySuggestions := strings.Contains(content, "\"fluency_suggestions\"")
+	hasVocabularySuggestions := strings.Contains(content, "\"vocabulary_suggestions\"")
+
+	// Estimate progress based on which sections are present
+	if hasVocabularySuggestions {
+		return 95
+	} else if hasFluencySuggestions {
+		return 85
+	} else if hasVocabularyTips {
+		return 70
+	} else if hasGrammarTips {
+		return 50
+	} else if hasGeneralSkills {
+		return 30
+	} else if hasLevel {
+		return 20
+	}
+
+	// Default progress based on content length
+	length := len(content)
+	if length > 500 {
+		return 25
+	} else if length > 200 {
+		return 20
+	} else if length > 50 {
+		return 15
+	}
+
+	return 10
+}
+
 func (aa *AssessmentAgent) DisplayAssessment(jsonResponse string) {
 	var assessment AssessmentResponse
 
@@ -384,255 +585,4 @@ func (aa *AssessmentAgent) DisplayAssessment(jsonResponse string) {
 	fmt.Printf("Fluency Suggestions: %v\n", assessment.FluencySuggestions)
 	fmt.Printf("Vocabulary Suggestions: %v\n", assessment.VocabularySuggestions)
 	fmt.Println("────────────────────────────────────────")
-}
-
-func ParseAssessmentResponse(jsonResponse string) (*AssessmentResponse, error) {
-	var assessment AssessmentResponse
-
-	cleanJSON := strings.TrimSpace(jsonResponse)
-	if after, ok := strings.CutPrefix(cleanJSON, "```json"); ok {
-		cleanJSON = after
-	} else if after, ok := strings.CutPrefix(cleanJSON, "```"); ok {
-		cleanJSON = after
-	}
-	cleanJSON = strings.TrimSuffix(cleanJSON, "```")
-	cleanJSON = strings.TrimSpace(cleanJSON)
-
-	err := json.Unmarshal([]byte(cleanJSON), &assessment)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse assessment response: %w", err)
-	}
-
-	return &assessment, nil
-}
-
-func (aa *AssessmentAgent) parseTaggedString(taggedString string) []TipObject {
-	var tipObjects []TipObject
-
-	// Extract all title-description pairs
-	remaining := taggedString
-	for {
-		// Find the next title tag
-		titleStart := strings.Index(remaining, "<t>")
-		if titleStart == -1 {
-			break
-		}
-
-		titleEnd := strings.Index(remaining[titleStart+3:], "</t>")
-		if titleEnd == -1 {
-			break
-		}
-
-		titleContent := remaining[titleStart+3 : titleStart+3+titleEnd]
-
-		// Find the corresponding description tag - REQUIRED
-		descStart := strings.Index(remaining[titleStart+3+titleEnd+4:], "<d>")
-		if descStart == -1 {
-			// Description tag is REQUIRED - skip this entry
-			utils.PrintError(fmt.Sprintf("Missing <d> tag for title: %s", titleContent))
-			remaining = remaining[titleStart+3+titleEnd+4:]
-			continue
-		}
-
-		descEnd := strings.Index(remaining[titleStart+3+titleEnd+4+descStart+3:], "</d>")
-		if descEnd == -1 {
-			// Closing description tag is REQUIRED - skip this entry
-			utils.PrintError(fmt.Sprintf("Missing closing </d> tag for title: %s", titleContent))
-			remaining = remaining[titleStart+3+titleEnd+4:]
-			continue
-		}
-
-		descContent := remaining[titleStart+3+titleEnd+4+descStart+3 : titleStart+3+titleEnd+4+descStart+3+descEnd]
-
-		// Create tip object only if description is not empty
-		if strings.TrimSpace(descContent) != "" {
-			tipObjects = append(tipObjects, TipObject{
-				Title:       titleContent,
-				Description: descContent,
-			})
-		} else {
-			utils.PrintError(fmt.Sprintf("Empty description for title: %s", titleContent))
-		}
-
-		// Move past this title-description pair
-		remaining = remaining[titleStart+3+titleEnd+4+descStart+3+descEnd+4:]
-	}
-
-	// Fallback: if no valid tags found, create object with the whole string as description
-	if len(tipObjects) == 0 {
-		tipObjects = append(tipObjects, TipObject{
-			Title:       "",
-			Description: taggedString,
-		})
-	}
-
-	return tipObjects
-}
-
-func (aa *AssessmentAgent) parseFluencySuggestion(taggedString string) []FluencySuggestion {
-	var suggestions []FluencySuggestion
-
-	// Extract all title-description-phrases groups
-	remaining := taggedString
-	for {
-		// Find the next title tag
-		titleStart := strings.Index(remaining, "<t>")
-		if titleStart == -1 {
-			break
-		}
-
-		titleEnd := strings.Index(remaining[titleStart+3:], "</t>")
-		if titleEnd == -1 {
-			break
-		}
-
-		titleContent := remaining[titleStart+3 : titleStart+3+titleEnd]
-
-		// Find the corresponding description tag - REQUIRED
-		descStart := strings.Index(remaining[titleStart+3+titleEnd+4:], "<d>")
-		if descStart == -1 {
-			// Description tag is REQUIRED - skip this entry
-			utils.PrintError(fmt.Sprintf("Missing <d> tag for fluency title: %s", titleContent))
-			remaining = remaining[titleStart+3+titleEnd+4:]
-			continue
-		}
-
-		descEnd := strings.Index(remaining[titleStart+3+titleEnd+4+descStart+3:], "</d>")
-		if descEnd == -1 {
-			// Closing description tag is REQUIRED - skip this entry
-			utils.PrintError(fmt.Sprintf("Missing closing </d> tag for fluency title: %s", titleContent))
-			remaining = remaining[titleStart+3+titleEnd+4:]
-			continue
-		}
-
-		descContent := remaining[titleStart+3+titleEnd+4+descStart+3 : titleStart+3+titleEnd+4+descStart+3+descEnd]
-
-		// Extract all phrases from <s></s> tags
-		var phrases []string
-		phraseRemaining := remaining[titleStart+3+titleEnd+4+descStart+3+descEnd+4:]
-		for {
-			phraseStart := strings.Index(phraseRemaining, "<s>")
-			if phraseStart == -1 {
-				break
-			}
-
-			phraseEnd := strings.Index(phraseRemaining[phraseStart+3:], "</s>")
-			if phraseEnd == -1 {
-				break
-			}
-
-			phraseContent := phraseRemaining[phraseStart+3 : phraseStart+3+phraseEnd]
-			phrases = append(phrases, phraseContent)
-			phraseRemaining = phraseRemaining[phraseStart+3+phraseEnd+4:]
-		}
-
-		// Create fluency suggestion only if description is not empty
-		if strings.TrimSpace(descContent) != "" {
-			suggestions = append(suggestions, FluencySuggestion{
-				Title:       titleContent,
-				Description: descContent,
-				Phrases:     phrases,
-			})
-		} else {
-			utils.PrintError(fmt.Sprintf("Empty description for fluency title: %s", titleContent))
-		}
-
-		// Move past this title-description-phrases group
-		remaining = remaining[titleStart+3+titleEnd+4+descStart+3+descEnd+4:]
-	}
-
-	// Fallback: if no valid tags found, create suggestion with the whole string as description
-	if len(suggestions) == 0 {
-		suggestions = append(suggestions, FluencySuggestion{
-			Title:       "",
-			Description: taggedString,
-			Phrases:     []string{},
-		})
-	}
-
-	return suggestions
-}
-
-func (aa *AssessmentAgent) parseVocabSuggestion(taggedString string) []VocabSuggestion {
-	var suggestions []VocabSuggestion
-
-	// Extract all title-description-vocab groups
-	remaining := taggedString
-	for {
-		// Find the next title tag
-		titleStart := strings.Index(remaining, "<t>")
-		if titleStart == -1 {
-			break
-		}
-
-		titleEnd := strings.Index(remaining[titleStart+3:], "</t>")
-		if titleEnd == -1 {
-			break
-		}
-
-		titleContent := remaining[titleStart+3 : titleStart+3+titleEnd]
-
-		// Find the corresponding description tag - REQUIRED
-		descStart := strings.Index(remaining[titleStart+3+titleEnd+4:], "<d>")
-		if descStart == -1 {
-			// Description tag is REQUIRED - skip this entry
-			utils.PrintError(fmt.Sprintf("Missing <d> tag for vocab title: %s", titleContent))
-			remaining = remaining[titleStart+3+titleEnd+4:]
-			continue
-		}
-
-		descEnd := strings.Index(remaining[titleStart+3+titleEnd+4+descStart+3:], "</d>")
-		if descEnd == -1 {
-			// Closing description tag is REQUIRED - skip this entry
-			utils.PrintError(fmt.Sprintf("Missing closing </d> tag for vocab title: %s", titleContent))
-			remaining = remaining[titleStart+3+titleEnd+4:]
-			continue
-		}
-
-		descContent := remaining[titleStart+3+titleEnd+4+descStart+3 : titleStart+3+titleEnd+4+descStart+3+descEnd]
-
-		// Extract all vocab from <v></v> tags
-		var vocab []string
-		vocabRemaining := remaining[titleStart+3+titleEnd+4+descStart+3+descEnd+4:]
-		for {
-			vocabStart := strings.Index(vocabRemaining, "<v>")
-			if vocabStart == -1 {
-				break
-			}
-
-			vocabEnd := strings.Index(vocabRemaining[vocabStart+3:], "</v>")
-			if vocabEnd == -1 {
-				break
-			}
-
-			vocabContent := vocabRemaining[vocabStart+3 : vocabStart+3+vocabEnd]
-			vocab = append(vocab, vocabContent)
-			vocabRemaining = vocabRemaining[vocabStart+3+vocabEnd+4:]
-		}
-
-		// Create vocab suggestion only if description is not empty
-		if strings.TrimSpace(descContent) != "" {
-			suggestions = append(suggestions, VocabSuggestion{
-				Title:       titleContent,
-				Description: descContent,
-				Vocab:       vocab,
-			})
-		} else {
-			utils.PrintError(fmt.Sprintf("Empty description for vocab title: %s", titleContent))
-		}
-
-		// Move past this title-description-vocab group
-		remaining = remaining[titleStart+3+titleEnd+4+descStart+3+descEnd+4:]
-	}
-
-	// Fallback: if no valid tags found, create suggestion with the whole string as description
-	if len(suggestions) == 0 {
-		suggestions = append(suggestions, VocabSuggestion{
-			Title:       "",
-			Description: taggedString,
-			Vocab:       []string{},
-		})
-	}
-
-	return suggestions
 }

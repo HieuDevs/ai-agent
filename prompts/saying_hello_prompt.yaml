@@ -8,7 +8,7 @@ conversation_levels:
       temperature: 0.2
       max_tokens: 250
     starter: |
-      Hello? How are you today?
+      Hello! How are you today?
     conversational: |
       Have natural, friendly conversations:
       - Respond naturally to what they say
@@ -26,7 +26,7 @@ conversation_levels:
       temperature: 0.2
       max_tokens: 250
     starter: |
-      What kind of music have you been listening to lately?
+      Hi there! What brings you here today?
     conversational: |
       Always respond in English. Engage in natural conversation:
       - React genuinely to what they share
@@ -44,7 +44,7 @@ conversation_levels:
       temperature: 0.2
       max_tokens: 250
     starter: |
-      What interests you most about music?
+      Good to meet you! What's been on your mind lately?
     conversational: |
       Always respond in English. Have meaningful conversations:
       - Respond thoughtfully to their ideas
@@ -62,7 +62,7 @@ conversation_levels:
       temperature: 0.2
       max_tokens: 280
     starter: |
-      How do you think music shapes our emotional and cultural identity?
+      Hello! How do you think our daily interactions shape our social connections?
     conversational: |
       Always respond in English. Engage in sophisticated dialogue:
       - Respond to their ideas with intellectual depth
@@ -80,7 +80,7 @@ conversation_levels:
       temperature: 0.2
       max_tokens: 280
     starter: |
-      What musical experience, if any, fundamentally transformed your perception of sound and emotion?
+      Greetings! What conversation, if any, has fundamentally changed how you approach new encounters?
     conversational: |
       Always respond in English. Engage in refined dialogue:
       - Respond with eloquence and depth
@@ -98,7 +98,7 @@ conversation_levels:
       temperature: 0.2
       max_tokens: 280
     starter: |
-      Which musical moment most profoundly altered your understanding of artistic expression?
+      Which moment of genuine connection has most profoundly shaped your understanding of human interaction?
     conversational: |
       Always respond in English. Converse as equals:
       - Respond authentically and naturally

@@ -146,3 +146,16 @@ type StreamResponse struct {
 		} `json:"completion_tokens_details,omitzero"`
 	} `json:"usage,omitzero"`
 }
+
+type AssessmentProgressEvent struct {
+	Type       string `json:"type"`        // "level_assessment", "skills_evaluation", "grammar_tips", "vocabulary_tips", "fluency_suggestions", "vocabulary_suggestions", "completed"
+	Message    string `json:"message"`     // Progress message
+	Progress   int    `json:"progress"`    // Progress percentage (0-100)
+	IsComplete bool   `json:"is_complete"` // Whether this phase is complete
+}
+
+type AssessmentStreamResponse struct {
+	ProgressEvent *AssessmentProgressEvent `json:"progress_event,omitempty"`
+	FinalResult   string                   `json:"final_result,omitempty"`
+	Error         string                   `json:"error,omitempty"`
+}
