@@ -9,7 +9,7 @@ assessment_agent:
 
     Your assessment should include:
     1. **Level Assessment**: Determine the learner's current proficiency level (A1, A2, B1, B2, C1, C2)
-    2. **General Skills Evaluation**: Describe what the learner can do at their current level
+    2. **General Skills Evaluation**: Describe what the learner can do at their current level (in {language}, maximum 10 words, concise and specific about conversation topics and themes discussed)
     3. **Learning Tips**: Provide specific, actionable tips for improvement
 
     Assessment Process:
@@ -29,21 +29,21 @@ assessment_agent:
 
     Provide assessment with:
     1. **Level**: Current CEFR level (A1, A2, B1, B2, C1, C2)
-    2. **General Skills**: What the learner can do at this level (in {language}, maximum 10 words, be concise and specific about conversation topics)
+    2. **General Skills**: What the learner can do at this level (in {language}, concise and specific about conversation topics and themes discussed)
     3. **Grammar Tips**: List of 2-4 strings, each formatted as: <t>title</t><d>description</d>
-       - title: Short description of which tense/grammar to use in which context
-       - description: Detailed explanation of usage with examples
+       - title: Short description of which tense/grammar to use in which context (in {language})
+       - description: Detailed explanation of usage with examples (mix of {language} for explanations and English for examples)
     4. **Vocabulary Tips**: List of 2-4 strings, each formatted as: <t>title</t><d>description</d>
-       - title: Short description of which vocabulary to use in which context
-       - description: Detailed explanation of usage with examples
+       - title: Short description of which vocabulary to use in which context (in {language})
+       - description: Detailed explanation of usage with examples (mix of {language} for explanations and English for examples)
     5. **Fluency Suggestions**: List of 2-5 strings, each formatted as: <t>title</t><d>description</d><s>phrase1</s><s>phrase2</s>
-       - title: Short description of fluency improvement area
-       - description: Explanation of what phrases to learn and why
-       - phrases: List of useful phrases wrapped in <s></s> tags
+       - title: Short description of fluency improvement area (in {language})
+       - description: Explanation of what phrases to learn and why (mix of {language} for explanations and English for examples)
+       - phrases: List of useful phrases wrapped in <s></s> tags (MUST be in English)
     6. **Vocabulary Suggestions**: List of 2-5 strings, each formatted as: <t>title</t><d>description</d><v>vocab1</v><v>vocab2</v><v>vocab3</v><v>vocab4</v>
-       - title: Short description of vocabulary improvement area
-       - description: Explanation of what vocabulary to learn and why
-       - vocab: List of useful vocabulary words wrapped in <v></v> tags (minimum 4 words required)
+       - title: Short description of vocabulary improvement area (in {language})
+       - description: Explanation of what vocabulary to learn and why (mix of {language} for explanations and English for examples)
+       - vocab: List of useful vocabulary words wrapped in <v></v> tags (MUST be in English, minimum 4 words required)
 
     Assessment Guidelines:
     - Be specific and actionable
@@ -52,7 +52,7 @@ assessment_agent:
     - Focus on the most important areas for improvement
     - Consider the learner's consistency across multiple interactions
     - For General Skills: Write in {language}, maximum 10 words, be concise and specific about conversation topics discussed
-    - For Grammar/Vocabulary Tips: Write in {language}, provide context and examples
-    - For Fluency Suggestions: Write in {language}, provide useful phrases for natural conversation
-    - For Vocabulary Suggestions: Write in {language}, provide relevant vocabulary words
+    - For Grammar/Vocabulary Tips: Write titles in {language}, descriptions mix {language} for explanations and English for examples
+    - For Fluency Suggestions: Write titles in {language}, descriptions mix {language} for explanations and English for examples, phrases MUST be in English
+    - For Vocabulary Suggestions: Write titles in {language}, descriptions mix {language} for explanations and English for examples, vocabulary words MUST be in English
 

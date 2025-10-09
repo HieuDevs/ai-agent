@@ -233,19 +233,19 @@ Provide assessment with:
 1. **Level**: Current CEFR level (A1, A2, B1, B2, C1, C2)
 2. **General Skills**: What the learner can do at this level (in %s, maximum 10 words, be concise and specific about conversation topics)
 3. **Grammar Tips**: List of 2-4 strings, each formatted as: <t>title</t><d>description</d>
-   - title: Short description of which tense/grammar to use in which context
-   - description: Detailed explanation of usage with examples
+   - title: Short description of which tense/grammar to use in which context (in %s)
+   - description: Detailed explanation of usage with examples (mix of %s for explanations and English for examples)
 4. **Vocabulary Tips**: List of 2-4 strings, each formatted as: <t>title</t><d>description</d>
-   - title: Short description of which vocabulary to use in which context
-   - description: Detailed explanation of usage with examples
+   - title: Short description of which vocabulary to use in which context (in %s)
+   - description: Detailed explanation of usage with examples (mix of %s for explanations and English for examples)
 5. **Fluency Suggestions**: List of 2-5 strings, each formatted as: <t>title</t><d>description</d><s>phrase1</s><s>phrase2</s>
-   - title: Short description of fluency improvement area
-   - description: Explanation of what phrases to learn and why
-   - phrases: List of useful phrases wrapped in <s></s> tags
+   - title: Short description of fluency improvement area (in %s)
+   - description: Explanation of what phrases to learn and why (mix of %s for explanations and English for examples)
+   - phrases: List of useful phrases wrapped in <s></s> tags (MUST be in English)
 6. **Vocabulary Suggestions**: List of 2-5 strings, each formatted as: <t>title</t><d>description</d><v>vocab1</v><v>vocab2</v><v>vocab3</v><v>vocab4</v>
-   - title: Short description of vocabulary improvement area
-   - description: Explanation of what vocabulary to learn and why
-   - vocab: List of useful vocabulary words wrapped in <v></v> tags (minimum 4 words required)
+   - title: Short description of vocabulary improvement area (in %s)
+   - description: Explanation of what vocabulary to learn and why (mix of %s for explanations and English for examples)
+   - vocab: List of useful vocabulary words wrapped in <v></v> tags (MUST be in English, minimum 4 words required)
 
 Assessment Guidelines:
 - Be specific and actionable
@@ -254,9 +254,9 @@ Assessment Guidelines:
 - Focus on the most important areas for improvement
 - Consider the learner's consistency across multiple interactions
 - For General Skills: Write in target language, maximum 10 words, be concise and specific about conversation topics discussed
-- For Grammar/Vocabulary Tips: Write in target language, provide context and examples
-- For Fluency Suggestions: Write in target language, provide useful phrases for natural conversation
-- For Vocabulary Suggestions: Write in target language, provide relevant vocabulary words`, historyText, aa.language)
+- For Grammar/Vocabulary Tips: Write titles in target language, descriptions mix target language for explanations and English for examples
+- For Fluency Suggestions: Write titles in target language, descriptions mix target language for explanations and English for examples, phrases MUST be in English
+- For Vocabulary Suggestions: Write titles in target language, descriptions mix target language for explanations and English for examples, vocabulary words MUST be in English`, historyText, aa.language, aa.language, aa.language, aa.language, aa.language, aa.language, aa.language, aa.language)
 	}
 
 	template := aa.config.AssessmentAgent.UserPromptTemplate
@@ -311,27 +311,27 @@ func (aa *AssessmentAgent) buildResponseFormat() *models.ResponseFormat {
 			},
 			"general_skills": map[string]any{
 				"type":        "string",
-				"description": "Description of what the learner can do at their current level (in target language, maximum 10 words, concise and specific about conversation topics)",
+				"description": "Description of what the learner can do at their current level (in target language, concise and specific about conversation topics and themes discussed)",
 			},
 			"grammar_tips": map[string]any{
 				"type":        "array",
 				"items":       map[string]any{"type": "string"},
-				"description": "List of 2-4 grammar improvement tips, each formatted as: <t>title</t><d>description</d> (multiple tags supported)",
+				"description": "List of grammar improvement tips, each formatted as: <t>title</t><d>description</d> (multiple tags supported)",
 			},
 			"vocabulary_tips": map[string]any{
 				"type":        "array",
 				"items":       map[string]any{"type": "string"},
-				"description": "List of 2-4 vocabulary expansion tips, each formatted as: <t>title</t><d>description</d> (multiple tags supported)",
+				"description": "List of vocabulary expansion tips, each formatted as: <t>title</t><d>description</d> (multiple tags supported)",
 			},
 			"fluency_suggestions": map[string]any{
 				"type":        "array",
 				"items":       map[string]any{"type": "string"},
-				"description": "List of 2-5 fluency improvement suggestions, each formatted as: <t>title</t><d>description</d><s>phrase1</s><s>phrase2</s> (multiple tags supported)",
+				"description": "List of fluency improvement suggestions, each formatted as: <t>title</t><d>description</d><s>phrase1</s><s>phrase2</s> etc... (phrases MUST be in English, multiple tags supported)",
 			},
 			"vocabulary_suggestions": map[string]any{
 				"type":        "array",
 				"items":       map[string]any{"type": "string"},
-				"description": "List of 2-5 vocabulary improvement suggestions, each formatted as: <t>title</t><d>description</d><v>vocab1</v><v>vocab2</v><v>vocab3</v><v>vocab4</v> (minimum 4 vocab words required, multiple tags supported)",
+				"description": "List of vocabulary improvement suggestions, each formatted as: <t>title</t><d>description</d><v>vocab1</v><v>vocab2</v><v>vocab3</v><v>vocab4</v> etc... (vocab words MUST be in English, minimum 4 words required, multiple tags supported)",
 			},
 		},
 		"required":             []string{"level", "general_skills", "grammar_tips", "vocabulary_tips", "fluency_suggestions", "vocabulary_suggestions"},
@@ -375,80 +375,14 @@ func (aa *AssessmentAgent) DisplayAssessment(jsonResponse string) {
 		return
 	}
 
-	levelEmoji := map[string]string{
-		"A1": "🌱",
-		"A2": "🌿",
-		"B1": "🌳",
-		"B2": "🏔️",
-		"C1": "⭐",
-		"C2": "👑",
-	}
-
-	emoji := levelEmoji[assessment.Level]
-	if emoji == "" {
-		emoji = "📊"
-	}
-
-	fmt.Println("\n📊 Proficiency Assessment:")
+	fmt.Println("\n📊 Raw Assessment Data:")
 	fmt.Println("────────────────────────────────────────")
-	fmt.Printf("%s Level: %s\n\n", emoji, assessment.Level)
-	fmt.Printf("🎯 General Skills:\n%s\n\n", assessment.GeneralSkills)
-	fmt.Printf("📚 Grammar Tips:\n")
-	for _, tip := range assessment.GrammarTips {
-		tipObjects := aa.parseTaggedString(tip)
-		for _, tipObj := range tipObjects {
-			if tipObj.Title != "" {
-				fmt.Printf("• %s\n", tipObj.Title)
-			}
-			if tipObj.Description != "" {
-				fmt.Printf("  %s\n", tipObj.Description)
-			}
-		}
-	}
-	fmt.Printf("\n📖 Vocabulary Tips:\n")
-	for _, tip := range assessment.VocabularyTips {
-		tipObjects := aa.parseTaggedString(tip)
-		for _, tipObj := range tipObjects {
-			if tipObj.Title != "" {
-				fmt.Printf("• %s\n", tipObj.Title)
-			}
-			if tipObj.Description != "" {
-				fmt.Printf("  %s\n", tipObj.Description)
-			}
-		}
-	}
-
-	fmt.Printf("\n🗣️ Fluency Suggestions:\n")
-	for _, tip := range assessment.FluencySuggestions {
-		suggestions := aa.parseFluencySuggestion(tip)
-		for _, suggestion := range suggestions {
-			if suggestion.Title != "" {
-				fmt.Printf("• %s\n", suggestion.Title)
-			}
-			if suggestion.Description != "" {
-				fmt.Printf("  %s\n", suggestion.Description)
-			}
-			if len(suggestion.Phrases) > 0 {
-				fmt.Printf("  Phrases: %s\n", strings.Join(suggestion.Phrases, ", "))
-			}
-		}
-	}
-
-	fmt.Printf("\n📚 Vocabulary Suggestions:\n")
-	for _, tip := range assessment.VocabularySuggestions {
-		suggestions := aa.parseVocabSuggestion(tip)
-		for _, suggestion := range suggestions {
-			if suggestion.Title != "" {
-				fmt.Printf("• %s\n", suggestion.Title)
-			}
-			if suggestion.Description != "" {
-				fmt.Printf("  %s\n", suggestion.Description)
-			}
-			if len(suggestion.Vocab) > 0 {
-				fmt.Printf("  Vocabulary: %s\n", strings.Join(suggestion.Vocab, ", "))
-			}
-		}
-	}
+	fmt.Printf("Level: %s\n", assessment.Level)
+	fmt.Printf("General Skills: %s\n", assessment.GeneralSkills)
+	fmt.Printf("Grammar Tips: %v\n", assessment.GrammarTips)
+	fmt.Printf("Vocabulary Tips: %v\n", assessment.VocabularyTips)
+	fmt.Printf("Fluency Suggestions: %v\n", assessment.FluencySuggestions)
+	fmt.Printf("Vocabulary Suggestions: %v\n", assessment.VocabularySuggestions)
 	fmt.Println("────────────────────────────────────────")
 }
 

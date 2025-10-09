@@ -168,12 +168,12 @@ func (aa *AssessmentAgent) buildResponseFormat() *models.ResponseFormat {
             "fluency_suggestions": map[string]any{
                 "type":        "array",
                 "items":       map[string]any{"type": "string"},
-                "description": "List of 2-5 fluency improvement suggestions, each formatted as: <t>title</t><d>description</d><s>phrase1</s><s>phrase2</s> (multiple tags supported)",
+                "description": "List of 2-5 fluency improvement suggestions, each formatted as: <t>title</t><d>description</d><s>phrase1</s><s>phrase2</s> (phrases MUST be in English, multiple tags supported)",
             },
             "vocabulary_suggestions": map[string]any{
                 "type":        "array",
                 "items":       map[string]any{"type": "string"},
-                "description": "List of 2-5 vocabulary improvement suggestions, each formatted as: <t>title</t><d>description</d><v>vocab1</v><v>vocab2</v><v>vocab3</v><v>vocab4</v> (minimum 4 vocab words required, multiple tags supported)",
+                "description": "List of 2-5 vocabulary improvement suggestions, each formatted as: <t>title</t><d>description</d><v>vocab1</v><v>vocab2</v><v>vocab3</v><v>vocab4</v> (vocab words MUST be in English, minimum 4 words required, multiple tags supported)",
             },
         },
         "required":             []string{"level", "general_skills", "grammar_tips", "vocabulary_tips", "fluency_suggestions", "vocabulary_suggestions"},
@@ -216,18 +216,18 @@ func (aa *AssessmentAgent) parseVocabSuggestion(taggedString string) []VocabSugg
 **Formats**: Different tip types use different tag patterns:
 
 **Grammar/Vocabulary Tips**: `<t>title</t><d>description</d>`
-- `<t>title</t>`: Short description of which tense/grammar/vocabulary to use in which context
-- `<d>description</d>`: Detailed explanation of usage with examples
+- `<t>title</t>`: Short description of which tense/grammar/vocabulary to use in which context (in target language)
+- `<d>description</d>`: Detailed explanation of usage with examples (mix of target language for explanations and English for examples)
 
 **Fluency Suggestions**: `<t>title</t><d>description</d><s>phrase1</s><s>phrase2</s>`
-- `<t>title</t>`: Short description of fluency improvement area
-- `<d>description</d>`: Explanation of what phrases to learn and why
-- `<s>phrase</s>`: Useful phrases for natural conversation
+- `<t>title</t>`: Short description of fluency improvement area (in target language)
+- `<d>description</d>`: Explanation of what phrases to learn and why (mix of target language for explanations and English for examples)
+- `<s>phrase</s>`: Useful phrases for natural conversation (MUST be in English)
 
 **Vocabulary Suggestions**: `<t>title</t><d>description</d><v>vocab1</v><v>vocab2</v><v>vocab3</v><v>vocab4</v>`
-- `<t>title</t>`: Short description of vocabulary improvement area
-- `<d>description</d>`: Explanation of what vocabulary to learn and why
-- `<v>vocab</v>`: Useful vocabulary words (minimum 4 words required)
+- `<t>title</t>`: Short description of vocabulary improvement area (in target language)
+- `<d>description</d>`: Explanation of what vocabulary to learn and why (mix of target language for explanations and English for examples)
+- `<v>vocab</v>`: Useful vocabulary words (MUST be in English, minimum 4 words required)
 
 **Examples**:
 ```
@@ -235,10 +235,10 @@ func (aa *AssessmentAgent) parseVocabSuggestion(taggedString string) []VocabSugg
 "<t>Present Continuous cho hành động đang diễn ra</t><d>Luyện tập sử dụng \"I am playing\" thay vì \"I play\" khi nói về hành động đang diễn ra. Ví dụ: \"I am playing football now\" thay vì \"I play football now\"</d>"
 
 // Fluency suggestion example:
-"<t>Expressing opinions</t><d>Học các cụm từ để bày tỏ ý kiến một cách tự nhiên</d><s>I think that</s><s>In my opinion</s><s>I believe</s>"
+"<t>Bày tỏ ý kiến</t><d>Học các cụm từ để bày tỏ ý kiến một cách tự nhiên</d><s>I think that</s><s>In my opinion</s><s>I believe</s>"
 
 // Vocabulary suggestion example:
-"<t>Sports vocabulary</t><d>Mở rộng từ vựng về thể thao để nói chuyện tự nhiên hơn</d><v>tournament</v><v>championship</v><v>training</v><v>competition</v>"
+"<t>Từ vựng thể thao</t><d>Mở rộng từ vựng về thể thao để nói chuyện tự nhiên hơn</d><v>tournament</v><v>championship</v><v>training</v><v>competition</v>"
 ```
 
 ## Integration Points
@@ -300,41 +300,21 @@ if response.Success {
 
 ## Display Format
 
-The agent provides formatted output with emojis and clear sections:
+The agent provides raw data output for debugging and development purposes:
 
 ```
-📊 Proficiency Assessment:
+📊 Raw Assessment Data:
 ────────────────────────────────────────
-🌿 Level: A2
-
-🎯 General Skills:
-Bạn có thể nói cơ bản về chủ đề bóng đá
-
-📚 Grammar Tips:
-• Present Continuous cho hành động đang diễn ra
-  Luyện tập sử dụng "I am playing" thay vì "I play" khi nói về hành động đang diễn ra. Ví dụ: "I am playing football now" thay vì "I play football now"
-• Past Simple cho hành động đã xảy ra
-  Sử dụng động từ quá khứ đơn để nói về những gì đã xảy ra. Ví dụ: "I played football yesterday" hoặc "We watched the match last week"
-
-📖 Vocabulary Tips:
-• Từ vựng thể thao cơ bản
-  Học thêm từ vựng về các môn thể thao khác như "tennis", "basketball", "swimming". Ví dụ: "I like playing tennis" hoặc "Swimming is good exercise"
-• Động từ thể thao
-  Luyện tập các động từ thể thao như "kick", "throw", "catch", "run". Ví dụ: "I kick the ball" hoặc "He throws the ball to me"
-
-🗣️ Fluency Suggestions:
-• Expressing opinions
-  Học các cụm từ để bày tỏ ý kiến một cách tự nhiên
-  Phrases: I think that, In my opinion, I believe
-
-📚 Vocabulary Suggestions:
-• Sports vocabulary
-  Mở rộng từ vựng về thể thao để nói chuyện tự nhiên hơn
-  Vocabulary: tournament, championship, training
-
-**Note**: The tips are stored as tagged strings in various formats and parsed into individual structs for display. Each title-description pair becomes a separate object in the list.
+Level: A2
+General Skills: Bạn có thể nói cơ bản về chủ đề bóng đá
+Grammar Tips: ["<t>Present Continuous cho hành động đang diễn ra</t><d>Luyện tập sử dụng \"I am playing\" thay vì \"I play\" khi nói về hành động đang diễn ra. Ví dụ: \"I am playing football now\" thay vì \"I play football now\"</d>", "<t>Past Simple cho hành động đã xảy ra</t><d>Sử dụng động từ quá khứ đơn để nói về những gì đã xảy ra. Ví dụ: \"I played football yesterday\" hoặc \"We watched the match last week\"</d>"]
+Vocabulary Tips: ["<t>Từ vựng thể thao cơ bản</t><d>Học thêm từ vựng về các môn thể thao khác như \"tennis\", \"basketball\", \"swimming\". Ví dụ: \"I like playing tennis\" hoặc \"Swimming is good exercise\"</d>", "<t>Động từ thể thao</t><d>Luyện tập các động từ thể thao như \"kick\", \"throw\", \"catch\", \"run\". Ví dụ: \"I kick the ball\" hoặc \"He throws the ball to me\"</d>"]
+Fluency Suggestions: ["<t>Bày tỏ ý kiến</t><d>Học các cụm từ để bày tỏ ý kiến một cách tự nhiên</d><s>I think that</s><s>In my opinion</s><s>I believe</s>"]
+Vocabulary Suggestions: ["<t>Từ vựng thể thao</t><d>Mở rộng từ vựng về thể thao để nói chuyện tự nhiên hơn</d><v>tournament</v><v>championship</v><v>training</v><v>competition</v>"]
 ────────────────────────────────────────
 ```
+
+**Note**: The tips are stored as tagged strings in various formats. Titles are in target language, descriptions mix target language for explanations and English for examples, while phrases and vocabulary words are always in English.
 
 ## CEFR Level Descriptions
 
@@ -407,6 +387,8 @@ Bạn có thể nói cơ bản về chủ đề bóng đá
 - **Example-Based**: Reference concrete examples from the conversation
 - **Priority Focus**: Focus on the most important areas for improvement
 - **Context Awareness**: Consider the learner's communication goals and context
+- **Language Mixing**: Titles in target language, descriptions mix target language for explanations and English for examples
+- **English Examples**: All phrases and vocabulary words must be in English for learning purposes
 
 ## Error Handling
 
