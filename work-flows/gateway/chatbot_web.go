@@ -77,6 +77,7 @@ func (cw *ChatbotWeb) StartWebServer(port string) {
 	http.HandleFunc("/api/stream", cw.handleStream)
 	http.HandleFunc("/api/translate", cw.handleTranslate)
 	http.HandleFunc("/api/suggestions", cw.handleGetSuggestions)
+	http.HandleFunc("/api/assessment", cw.handleGetAssessment)
 	// Prompts + Topics
 	http.HandleFunc("/api/prompts", cw.handleGetPrompts)
 	http.HandleFunc("/api/topics", cw.handleGetTopics)
@@ -134,13 +135,9 @@ func (cw *ChatbotWeb) handleStream(w http.ResponseWriter, r *http.Request) {
 			Content: levelPrompt,
 		},
 	}
-
-	if len(manager.GetHistoryManager().GetConversationHistory()) > 0 {
-		recentHistory := manager.GetHistoryManager().GetConversationHistory()
-		if len(recentHistory) > 0 {
-			recentHistory = recentHistory[len(recentHistory)-6:]
-		}
-		messages = append(messages, recentHistory...)
+	history := manager.GetHistoryManager().GetConversationHistory()
+	if len(history) > 0 {
+		messages = append(messages, history...)
 	}
 
 	messages = append(messages, models.Message{
@@ -805,6 +802,86 @@ func (cw *ChatbotWeb) handleGetSuggestions(w http.ResponseWriter, r *http.Reques
 	})
 }
 
+func (cw *ChatbotWeb) handleGetAssessment(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	var req struct {
+		SessionID string `json:"session_id"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		json.NewEncoder(w).Encode(ChatResponse{
+			Success: false,
+			Message: "Invalid request",
+		})
+		return
+	}
+
+	if req.SessionID == "" {
+		json.NewEncoder(w).Encode(ChatResponse{
+			Success: false,
+			Message: "Session ID is required",
+		})
+		return
+	}
+
+	cw.mu.Lock()
+	defer cw.mu.Unlock()
+
+	manager, exists := cw.sessions[req.SessionID]
+	if !exists {
+		json.NewEncoder(w).Encode(ChatResponse{
+			Success: false,
+			Message: "Invalid session ID",
+		})
+		return
+	}
+
+	assessmentAgent, exists := manager.GetAgent("AssessmentAgent")
+	if !exists {
+		json.NewEncoder(w).Encode(ChatResponse{
+			Success: false,
+			Message: "Assessment agent not available",
+		})
+		return
+	}
+
+	assessmentJob := models.JobRequest{
+		Task:          "assess proficiency level",
+		UserMessage:   "",
+		LastAIMessage: "",
+		Metadata:      manager.GetHistoryManager(),
+	}
+
+	assessmentResponse := assessmentAgent.ProcessTask(assessmentJob)
+	if !assessmentResponse.Success {
+		json.NewEncoder(w).Encode(ChatResponse{
+			Success: false,
+			Message: "Failed to generate assessment",
+		})
+		return
+	}
+
+	var assessmentMap map[string]any
+	if err := json.Unmarshal([]byte(assessmentResponse.Result), &assessmentMap); err != nil {
+		json.NewEncoder(w).Encode(ChatResponse{
+			Success: false,
+			Message: "Failed to parse assessment",
+		})
+		return
+	}
+
+	json.NewEncoder(w).Encode(ChatResponse{
+		Success:    true,
+		Evaluation: assessmentMap,
+	})
+}
+
 func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
 	html := `<!DOCTYPE html>
 <html lang="en">
@@ -1250,6 +1327,28 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
             cursor: not-allowed;
         }
         
+        .btn-assessment {
+            padding: 12px 24px;
+            background: #FF9800;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        
+        .btn-assessment:hover:not(:disabled) {
+            background: #F57C00;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(255, 152, 0, 0.4);
+        }
+        
+        .btn-assessment:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
         .modal {
             display: none;
             position: fixed;
@@ -1365,6 +1464,54 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
         
         .yaml-error.active {
             display: block;
+        }
+        
+        .assessment-content {
+            max-height: 60vh;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f9fafb;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        
+        .assessment-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            border-left: 4px solid #FF9800;
+        }
+        
+        .assessment-section h3 {
+            margin: 0 0 10px 0;
+            color: #FF9800;
+            font-size: 16px;
+        }
+        
+        .assessment-level {
+            font-size: 18px;
+            font-weight: bold;
+            color: #FF9800;
+            margin-bottom: 10px;
+        }
+        
+        .assessment-tip {
+            margin: 8px 0;
+            padding: 8px;
+            background: #f0f0f0;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .assessment-vocab {
+            display: inline-block;
+            margin: 2px 4px;
+            padding: 4px 8px;
+            background: #e3f2fd;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #1565c0;
         }
         
         .btn-add-prompt {
@@ -1497,6 +1644,7 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
             <div class="chat-input-wrapper">
                 <textarea id="chatInput" class="chat-input" placeholder="Type your message..." rows="1"></textarea>
                 <button id="hintBtn" class="btn-hint" disabled>💡 Hint</button>
+                <button id="assessmentBtn" class="btn-assessment" disabled>📊 End Conversation</button>
                 <button id="sendBtn" class="btn-send" disabled>Send</button>
             </div>
         </div>
@@ -1518,6 +1666,26 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
             <div class="modal-footer">
                 <button class="btn-secondary" onclick="closePromptEditor()">Cancel</button>
                 <button class="btn-primary" id="savePromptBtn" onclick="savePrompt()">Apply</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="assessmentModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">📊 Conversation Assessment</div>
+                <button class="btn-close" onclick="closeAssessmentModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="assessmentContent" class="assessment-content">
+                    <div style="text-align: center; padding: 40px;">
+                        <div style="font-size: 48px; margin-bottom: 20px;">⏳</div>
+                        <div>Generating assessment...</div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeAssessmentModal()">Close</button>
             </div>
         </div>
     </div>
@@ -1746,6 +1914,7 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
                             document.getElementById('chatTitle').textContent = 'No prompts available';
                             document.getElementById('chatInfo').textContent = 'Create a new prompt to start chatting';
                             document.getElementById('sendBtn').disabled = true;
+                            document.getElementById('assessmentBtn').disabled = true;
                             sessionActive = false;
                         }
                     }
@@ -1804,6 +1973,7 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
                     document.getElementById('chatInfo').textContent = 'Level: ' + capitalizeLevel(data.level);
                     document.getElementById('sendBtn').disabled = false;
                     document.getElementById('hintBtn').disabled = false;
+                    document.getElementById('assessmentBtn').disabled = false;
                     
                     document.getElementById('chatMessages').innerHTML = '';
                     addMessage('assistant', data.message, null);
@@ -1827,6 +1997,10 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
         
         document.getElementById('hintBtn').addEventListener('click', () => {
             showHint();
+        });
+        
+        document.getElementById('assessmentBtn').addEventListener('click', () => {
+            showAssessment();
         });
         
         document.getElementById('chatInput').addEventListener('keydown', (e) => {
@@ -2081,6 +2255,112 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
                 hintBtn.disabled = false;
                 hintBtn.textContent = originalText;
             }
+        }
+
+        async function showAssessment() {
+            if (!sessionActive) return;
+            
+            document.getElementById('assessmentModal').classList.add('active');
+            
+            const assessmentBtn = document.getElementById('assessmentBtn');
+            const originalText = assessmentBtn.textContent;
+            assessmentBtn.disabled = true;
+            assessmentBtn.textContent = '⏳ Generating...';
+
+            try {
+                const response = await fetch('/api/assessment', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ 
+                        session_id: currentSessionID
+                    })
+                });
+                const data = await response.json();
+
+                if (data.success && data.evaluation) {
+                    displayAssessment(data.evaluation);
+                } else {
+                    document.getElementById('assessmentContent').innerHTML = 
+                        '<div style="text-align: center; padding: 40px; color: #f44336;">' +
+                        '<div style="font-size: 48px; margin-bottom: 20px;">❌</div>' +
+                        '<div>' + (data.message || 'Failed to generate assessment') + '</div>' +
+                        '</div>';
+                }
+            } catch (error) {
+                console.error('Error getting assessment:', error);
+                document.getElementById('assessmentContent').innerHTML = 
+                    '<div style="text-align: center; padding: 40px; color: #f44336;">' +
+                    '<div style="font-size: 48px; margin-bottom: 20px;">❌</div>' +
+                    '<div>Failed to generate assessment</div>' +
+                    '</div>';
+            } finally {
+                assessmentBtn.disabled = false;
+                assessmentBtn.textContent = originalText;
+            }
+        }
+
+        function displayAssessment(assessment) {
+            const content = document.getElementById('assessmentContent');
+            
+            console.log('Assessment object:', assessment);
+            
+            let html = '<div class="assessment-level">Level: ' + escapeHtml(assessment.level) + '</div>';
+            
+            if (assessment.general_skills) {
+                html += '<div class="assessment-section">' +
+                       '<h3>🎯 General Skills</h3>' +
+                       '<div class="assessment-tip">' + escapeHtml(assessment.general_skills) + '</div>' +
+                       '</div>';
+            }
+            
+            if (assessment.grammar_tips && assessment.grammar_tips.length > 0) {
+                html += '<div class="assessment-section">' +
+                       '<h3>📚 Grammar Tips</h3>';
+                assessment.grammar_tips.forEach(tip => {
+                    html += '<div class="assessment-tip">' + escapeHtml(tip) + '</div>';
+                });
+                html += '</div>';
+            }
+            
+            if (assessment.vocabulary_tips && assessment.vocabulary_tips.length > 0) {
+                html += '<div class="assessment-section">' +
+                       '<h3>📖 Vocabulary Tips</h3>';
+                assessment.vocabulary_tips.forEach(tip => {
+                    html += '<div class="assessment-tip">' + escapeHtml(tip) + '</div>';
+                });
+                html += '</div>';
+            }
+            
+            if (assessment.fluency_suggestions && assessment.fluency_suggestions.length > 0) {
+                html += '<div class="assessment-section">' +
+                       '<h3>🗣️ Fluency Suggestions</h3>';
+                assessment.fluency_suggestions.forEach(suggestion => {
+                    html += '<div class="assessment-tip">' + escapeHtml(suggestion) + '</div>';
+                });
+                html += '</div>';
+            }
+            
+            if (assessment.vocabulary_suggestions && assessment.vocabulary_suggestions.length > 0) {
+                html += '<div class="assessment-section">' +
+                       '<h3>📚 Vocabulary Suggestions</h3>';
+                assessment.vocabulary_suggestions.forEach(suggestion => {
+                    html += '<div class="assessment-tip">' + escapeHtml(suggestion) + '</div>';
+                });
+                html += '</div>';
+            }
+            
+            content.innerHTML = html;
+        }
+
+        function escapeHtml(text) {
+            if (typeof text !== 'string') return text;
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function closeAssessmentModal() {
+            document.getElementById('assessmentModal').classList.remove('active');
         }
 
         init();

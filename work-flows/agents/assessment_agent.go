@@ -10,6 +10,56 @@ import (
 	"strings"
 )
 
+const defaultPrompt = `You are an expert English language assessment specialist. Your role is to analyze a learner's conversation history and provide a comprehensive proficiency assessment with actionable learning tips.
+
+Your assessment should include:
+1. **Level Assessment**: Determine the learner's current proficiency level (A1, A2, B1, B2, C1, C2)
+2. **General Skills Evaluation**: Describe what the learner can do at their current level
+3. **Learning Tips**: Provide specific, actionable tips for improvement
+
+Assessment Process:
+1. Analyze the conversation history (AI messages, user messages, and evaluations)
+2. Look for patterns in grammar usage, vocabulary range, sentence complexity
+3. Consider consistency and accuracy across multiple interactions
+4. Factor in the evaluations provided for each user message
+5. Determine the most appropriate CEFR level
+
+Be encouraging and constructive. Focus on the learner's strengths while identifying areas for growth.`
+
+const userDefaultPrompt = `Analyze this conversation history and provide a comprehensive assessment:
+
+Conversation History:
+%s
+
+Provide assessment with:
+1. **Level**: Current CEFR level (A1, A2, B1, B2, C1, C2)
+2. **General Skills**: What the learner can do at this level (in %s, maximum 10 words, be concise and specific about conversation topics)
+3. **Grammar Tips**: List of 2-4 strings, each formatted as: <t>title</t><d>description</d>
+   - title: Short description of which tense/grammar to use in which context (in %s)
+   - description: Detailed explanation of usage with examples (mix of %s for explanations and English for examples) - MUST be wrapped in <d></d> tags
+4. **Vocabulary Tips**: List of 2-4 strings, each formatted as: <t>title</t><d>description</d>
+   - title: Short description of which vocabulary to use in which context (in %s)
+   - description: Detailed explanation of usage with examples (mix of %s for explanations and English for examples) - MUST be wrapped in <d></d> tags
+5. **Fluency Suggestions**: List of 2-5 strings, each formatted as: <t>title</t><d>description</d><s>phrase1</s><s>phrase2</s>
+   - title: Short description of fluency improvement area (in %s)
+   - description: Explanation of what phrases to learn and why (mix of %s for explanations and English for examples) - MUST be wrapped in <d></d> tags
+   - phrases: List of useful phrases wrapped in <s></s> tags (MUST be in English)
+6. **Vocabulary Suggestions**: List of 2-5 strings, each formatted as: <t>title</t><d>description</d><v>vocab1</v><v>vocab2</v><v>vocab3</v><v>vocab4</v>
+   - title: Short description of vocabulary improvement area (in %s)
+   - description: Explanation of what vocabulary to learn and why (mix of %s for explanations and English for examples) - MUST be wrapped in <d></d> tags
+   - vocab: List of useful vocabulary words wrapped in <v></v> tags (MUST be in English, minimum 4 words required)
+
+Assessment Guidelines:
+- Be specific and actionable
+- Reference actual examples from the conversation
+- Provide encouragement alongside constructive feedback
+- Focus on the most important areas for improvement
+- Consider the learner's consistency across multiple interactions
+- For General Skills: Write in target language, maximum 10 words, be concise and specific about conversation topics discussed
+- For Grammar/Vocabulary Tips: Write titles in target language, descriptions mix target language for explanations and English for examples
+- For Fluency Suggestions: Write titles in target language, descriptions mix target language for explanations and English for examples, phrases MUST be in English
+- For Vocabulary Suggestions: Write titles in target language, descriptions mix target language for explanations and English for examples, vocabulary words MUST be in English`
+
 type AssessmentAgent struct {
 	name        string
 	client      client.Client
@@ -209,12 +259,12 @@ func (aa *AssessmentAgent) filterHistoryForAssessment(history []models.Message) 
 
 func (aa *AssessmentAgent) buildAssessmentPrompt() string {
 	if aa.config == nil {
-		return aa.buildDefaultPrompt()
+		return defaultPrompt
 	}
 
 	basePrompt := aa.config.AssessmentAgent.BasePrompt
 	if basePrompt == "" {
-		return aa.buildDefaultPrompt()
+		return defaultPrompt
 	}
 
 	return basePrompt
@@ -224,39 +274,7 @@ func (aa *AssessmentAgent) buildUserPrompt(history []models.Message) string {
 	historyText := aa.formatHistoryForPrompt(history)
 
 	if aa.config == nil || aa.config.AssessmentAgent.UserPromptTemplate == "" {
-		return fmt.Sprintf(`Analyze this conversation history and provide a comprehensive assessment:
-
-Conversation History:
-%s
-
-Provide assessment with:
-1. **Level**: Current CEFR level (A1, A2, B1, B2, C1, C2)
-2. **General Skills**: What the learner can do at this level (in %s, maximum 10 words, be concise and specific about conversation topics)
-3. **Grammar Tips**: List of 2-4 strings, each formatted as: <t>title</t><d>description</d>
-   - title: Short description of which tense/grammar to use in which context (in %s)
-   - description: Detailed explanation of usage with examples (mix of %s for explanations and English for examples)
-4. **Vocabulary Tips**: List of 2-4 strings, each formatted as: <t>title</t><d>description</d>
-   - title: Short description of which vocabulary to use in which context (in %s)
-   - description: Detailed explanation of usage with examples (mix of %s for explanations and English for examples)
-5. **Fluency Suggestions**: List of 2-5 strings, each formatted as: <t>title</t><d>description</d><s>phrase1</s><s>phrase2</s>
-   - title: Short description of fluency improvement area (in %s)
-   - description: Explanation of what phrases to learn and why (mix of %s for explanations and English for examples)
-   - phrases: List of useful phrases wrapped in <s></s> tags (MUST be in English)
-6. **Vocabulary Suggestions**: List of 2-5 strings, each formatted as: <t>title</t><d>description</d><v>vocab1</v><v>vocab2</v><v>vocab3</v><v>vocab4</v>
-   - title: Short description of vocabulary improvement area (in %s)
-   - description: Explanation of what vocabulary to learn and why (mix of %s for explanations and English for examples)
-   - vocab: List of useful vocabulary words wrapped in <v></v> tags (MUST be in English, minimum 4 words required)
-
-Assessment Guidelines:
-- Be specific and actionable
-- Reference actual examples from the conversation
-- Provide encouragement alongside constructive feedback
-- Focus on the most important areas for improvement
-- Consider the learner's consistency across multiple interactions
-- For General Skills: Write in target language, maximum 10 words, be concise and specific about conversation topics discussed
-- For Grammar/Vocabulary Tips: Write titles in target language, descriptions mix target language for explanations and English for examples
-- For Fluency Suggestions: Write titles in target language, descriptions mix target language for explanations and English for examples, phrases MUST be in English
-- For Vocabulary Suggestions: Write titles in target language, descriptions mix target language for explanations and English for examples, vocabulary words MUST be in English`, historyText, aa.language, aa.language, aa.language, aa.language, aa.language, aa.language, aa.language, aa.language)
+		return fmt.Sprintf(userDefaultPrompt, historyText, aa.language, aa.language, aa.language, aa.language, aa.language, aa.language, aa.language, aa.language, aa.language)
 	}
 
 	template := aa.config.AssessmentAgent.UserPromptTemplate
@@ -280,24 +298,6 @@ func (aa *AssessmentAgent) formatHistoryForPrompt(history []models.Message) stri
 	}
 
 	return builder.String()
-}
-
-func (aa *AssessmentAgent) buildDefaultPrompt() string {
-	return `You are an expert English language assessment specialist. Your role is to analyze a learner's conversation history and provide a comprehensive proficiency assessment with actionable learning tips.
-
-Your assessment should include:
-1. **Level Assessment**: Determine the learner's current proficiency level (A1, A2, B1, B2, C1, C2)
-2. **General Skills Evaluation**: Describe what the learner can do at their current level
-3. **Learning Tips**: Provide specific, actionable tips for improvement
-
-Assessment Process:
-1. Analyze the conversation history (AI messages, user messages, and evaluations)
-2. Look for patterns in grammar usage, vocabulary range, sentence complexity
-3. Consider consistency and accuracy across multiple interactions
-4. Factor in the evaluations provided for each user message
-5. Determine the most appropriate CEFR level
-
-Be encouraging and constructive. Focus on the learner's strengths while identifying areas for growth.`
 }
 
 func (aa *AssessmentAgent) buildResponseFormat() *models.ResponseFormat {
@@ -425,42 +425,40 @@ func (aa *AssessmentAgent) parseTaggedString(taggedString string) []TipObject {
 
 		titleContent := remaining[titleStart+3 : titleStart+3+titleEnd]
 
-		// Find the corresponding description tag
+		// Find the corresponding description tag - REQUIRED
 		descStart := strings.Index(remaining[titleStart+3+titleEnd+4:], "<d>")
 		if descStart == -1 {
-			// If no description found, create object with just title
-			tipObjects = append(tipObjects, TipObject{
-				Title:       titleContent,
-				Description: "",
-			})
+			// Description tag is REQUIRED - skip this entry
+			utils.PrintError(fmt.Sprintf("Missing <d> tag for title: %s", titleContent))
 			remaining = remaining[titleStart+3+titleEnd+4:]
 			continue
 		}
 
 		descEnd := strings.Index(remaining[titleStart+3+titleEnd+4+descStart+3:], "</d>")
 		if descEnd == -1 {
-			// If no closing description tag, create object with just title
-			tipObjects = append(tipObjects, TipObject{
-				Title:       titleContent,
-				Description: "",
-			})
+			// Closing description tag is REQUIRED - skip this entry
+			utils.PrintError(fmt.Sprintf("Missing closing </d> tag for title: %s", titleContent))
 			remaining = remaining[titleStart+3+titleEnd+4:]
 			continue
 		}
 
 		descContent := remaining[titleStart+3+titleEnd+4+descStart+3 : titleStart+3+titleEnd+4+descStart+3+descEnd]
 
-		// Create tip object
-		tipObjects = append(tipObjects, TipObject{
-			Title:       titleContent,
-			Description: descContent,
-		})
+		// Create tip object only if description is not empty
+		if strings.TrimSpace(descContent) != "" {
+			tipObjects = append(tipObjects, TipObject{
+				Title:       titleContent,
+				Description: descContent,
+			})
+		} else {
+			utils.PrintError(fmt.Sprintf("Empty description for title: %s", titleContent))
+		}
 
 		// Move past this title-description pair
 		remaining = remaining[titleStart+3+titleEnd+4+descStart+3+descEnd+4:]
 	}
 
-	// Fallback: if no tags found, create object with the whole string as description
+	// Fallback: if no valid tags found, create object with the whole string as description
 	if len(tipObjects) == 0 {
 		tipObjects = append(tipObjects, TipObject{
 			Title:       "",
@@ -490,15 +488,21 @@ func (aa *AssessmentAgent) parseFluencySuggestion(taggedString string) []Fluency
 
 		titleContent := remaining[titleStart+3 : titleStart+3+titleEnd]
 
-		// Find the corresponding description tag
+		// Find the corresponding description tag - REQUIRED
 		descStart := strings.Index(remaining[titleStart+3+titleEnd+4:], "<d>")
 		if descStart == -1 {
-			break
+			// Description tag is REQUIRED - skip this entry
+			utils.PrintError(fmt.Sprintf("Missing <d> tag for fluency title: %s", titleContent))
+			remaining = remaining[titleStart+3+titleEnd+4:]
+			continue
 		}
 
 		descEnd := strings.Index(remaining[titleStart+3+titleEnd+4+descStart+3:], "</d>")
 		if descEnd == -1 {
-			break
+			// Closing description tag is REQUIRED - skip this entry
+			utils.PrintError(fmt.Sprintf("Missing closing </d> tag for fluency title: %s", titleContent))
+			remaining = remaining[titleStart+3+titleEnd+4:]
+			continue
 		}
 
 		descContent := remaining[titleStart+3+titleEnd+4+descStart+3 : titleStart+3+titleEnd+4+descStart+3+descEnd]
@@ -522,18 +526,22 @@ func (aa *AssessmentAgent) parseFluencySuggestion(taggedString string) []Fluency
 			phraseRemaining = phraseRemaining[phraseStart+3+phraseEnd+4:]
 		}
 
-		// Create fluency suggestion
-		suggestions = append(suggestions, FluencySuggestion{
-			Title:       titleContent,
-			Description: descContent,
-			Phrases:     phrases,
-		})
+		// Create fluency suggestion only if description is not empty
+		if strings.TrimSpace(descContent) != "" {
+			suggestions = append(suggestions, FluencySuggestion{
+				Title:       titleContent,
+				Description: descContent,
+				Phrases:     phrases,
+			})
+		} else {
+			utils.PrintError(fmt.Sprintf("Empty description for fluency title: %s", titleContent))
+		}
 
 		// Move past this title-description-phrases group
 		remaining = remaining[titleStart+3+titleEnd+4+descStart+3+descEnd+4:]
 	}
 
-	// Fallback: if no tags found, create suggestion with the whole string as description
+	// Fallback: if no valid tags found, create suggestion with the whole string as description
 	if len(suggestions) == 0 {
 		suggestions = append(suggestions, FluencySuggestion{
 			Title:       "",
@@ -564,15 +572,21 @@ func (aa *AssessmentAgent) parseVocabSuggestion(taggedString string) []VocabSugg
 
 		titleContent := remaining[titleStart+3 : titleStart+3+titleEnd]
 
-		// Find the corresponding description tag
+		// Find the corresponding description tag - REQUIRED
 		descStart := strings.Index(remaining[titleStart+3+titleEnd+4:], "<d>")
 		if descStart == -1 {
-			break
+			// Description tag is REQUIRED - skip this entry
+			utils.PrintError(fmt.Sprintf("Missing <d> tag for vocab title: %s", titleContent))
+			remaining = remaining[titleStart+3+titleEnd+4:]
+			continue
 		}
 
 		descEnd := strings.Index(remaining[titleStart+3+titleEnd+4+descStart+3:], "</d>")
 		if descEnd == -1 {
-			break
+			// Closing description tag is REQUIRED - skip this entry
+			utils.PrintError(fmt.Sprintf("Missing closing </d> tag for vocab title: %s", titleContent))
+			remaining = remaining[titleStart+3+titleEnd+4:]
+			continue
 		}
 
 		descContent := remaining[titleStart+3+titleEnd+4+descStart+3 : titleStart+3+titleEnd+4+descStart+3+descEnd]
@@ -596,18 +610,22 @@ func (aa *AssessmentAgent) parseVocabSuggestion(taggedString string) []VocabSugg
 			vocabRemaining = vocabRemaining[vocabStart+3+vocabEnd+4:]
 		}
 
-		// Create vocab suggestion
-		suggestions = append(suggestions, VocabSuggestion{
-			Title:       titleContent,
-			Description: descContent,
-			Vocab:       vocab,
-		})
+		// Create vocab suggestion only if description is not empty
+		if strings.TrimSpace(descContent) != "" {
+			suggestions = append(suggestions, VocabSuggestion{
+				Title:       titleContent,
+				Description: descContent,
+				Vocab:       vocab,
+			})
+		} else {
+			utils.PrintError(fmt.Sprintf("Empty description for vocab title: %s", titleContent))
+		}
 
 		// Move past this title-description-vocab group
 		remaining = remaining[titleStart+3+titleEnd+4+descStart+3+descEnd+4:]
 	}
 
-	// Fallback: if no tags found, create suggestion with the whole string as description
+	// Fallback: if no valid tags found, create suggestion with the whole string as description
 	if len(suggestions) == 0 {
 		suggestions = append(suggestions, VocabSuggestion{
 			Title:       "",

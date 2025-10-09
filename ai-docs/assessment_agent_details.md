@@ -9,7 +9,7 @@ The AssessmentAgent is a specialized agent that analyzes conversation history to
 ### ✅ Implemented Features
 
 - **Proficiency Level Assessment**: Determines current CEFR level (A1-C2)
-- **General Skills Evaluation**: Describes what learners can do at their level
+- **General Skills Evaluation**: Describes what learners can do at their level (concise and specific about conversation topics and themes discussed)
 - **Learning Tips Generation**: Provides specific, actionable tips for improvement
 - **Conversation History Analysis**: Analyzes patterns across multiple interactions
 - **Structured Output**: Uses OpenRouter Structured Outputs for consistent responses
@@ -153,27 +153,27 @@ func (aa *AssessmentAgent) buildResponseFormat() *models.ResponseFormat {
             },
             "general_skills": map[string]any{
                 "type":        "string",
-                "description": "Description of what the learner can do at their current level (in target language, maximum 10 words)",
+                "description": "Description of what the learner can do at their current level (in target language, concise and specific about conversation topics and themes discussed)",
             },
             "grammar_tips": map[string]any{
                 "type":        "array",
                 "items":       map[string]any{"type": "string"},
-                "description": "List of 2-4 grammar improvement tips, each formatted as: <t>title</t><d>description</d>",
+                "description": "List of grammar improvement tips, each formatted as: <t>title</t><d>description</d> (multiple tags supported)",
             },
             "vocabulary_tips": map[string]any{
                 "type":        "array",
                 "items":       map[string]any{"type": "string"},
-                "description": "List of 2-4 vocabulary expansion tips, each formatted as: <t>title</t><d>description</d>",
+                "description": "List of vocabulary expansion tips, each formatted as: <t>title</t><d>description</d> (multiple tags supported)",
             },
             "fluency_suggestions": map[string]any{
                 "type":        "array",
                 "items":       map[string]any{"type": "string"},
-                "description": "List of 2-5 fluency improvement suggestions, each formatted as: <t>title</t><d>description</d><s>phrase1</s><s>phrase2</s> (phrases MUST be in English, multiple tags supported)",
+                "description": "List of fluency improvement suggestions, each formatted as: <t>title</t><d>description</d><s>phrase1</s><s>phrase2</s> etc... (phrases MUST be in English, multiple tags supported)",
             },
             "vocabulary_suggestions": map[string]any{
                 "type":        "array",
                 "items":       map[string]any{"type": "string"},
-                "description": "List of 2-5 vocabulary improvement suggestions, each formatted as: <t>title</t><d>description</d><v>vocab1</v><v>vocab2</v><v>vocab3</v><v>vocab4</v> (vocab words MUST be in English, minimum 4 words required, multiple tags supported)",
+                "description": "List of vocabulary improvement suggestions, each formatted as: <t>title</t><d>description</d><v>vocab1</v><v>vocab2</v><v>vocab3</v><v>vocab4</v> etc... (vocab words MUST be in English, minimum 4 words required, multiple tags supported)",
             },
         },
         "required":             []string{"level", "general_skills", "grammar_tips", "vocabulary_tips", "fluency_suggestions", "vocabulary_suggestions"},
@@ -423,3 +423,11 @@ Vocabulary Suggestions: ["<t>Từ vựng thể thao</t><d>Mở rộng từ vựn
 - Test JSON schema validation
 - Test display formatting
 - Test integration with other agents
+
+## Recent Updates
+
+### Description Tag Enforcement
+- **Enforced required `<d></d>` tags**: All description fields must be properly wrapped in `<d></d>` tags
+- **Strict validation**: Missing or empty description tags are now logged as errors and skipped
+- **Enhanced error logging**: Added specific error messages for missing opening/closing description tags
+- **Updated prompts**: Modified both YAML config and Go code to explicitly require description tags

@@ -32,17 +32,17 @@ assessment_agent:
     2. **General Skills**: What the learner can do at this level (in {language}, concise and specific about conversation topics and themes discussed)
     3. **Grammar Tips**: List of 2-4 strings, each formatted as: <t>title</t><d>description</d>
        - title: Short description of which tense/grammar to use in which context (in {language})
-       - description: Detailed explanation of usage with examples (mix of {language} for explanations and English for examples)
+       - description: Detailed explanation of usage with examples (mix of {language} for explanations and English for examples) - MUST be wrapped in <d></d> tags
     4. **Vocabulary Tips**: List of 2-4 strings, each formatted as: <t>title</t><d>description</d>
        - title: Short description of which vocabulary to use in which context (in {language})
-       - description: Detailed explanation of usage with examples (mix of {language} for explanations and English for examples)
+       - description: Detailed explanation of usage with examples (mix of {language} for explanations and English for examples) - MUST be wrapped in <d></d> tags
     5. **Fluency Suggestions**: List of 2-5 strings, each formatted as: <t>title</t><d>description</d><s>phrase1</s><s>phrase2</s>
        - title: Short description of fluency improvement area (in {language})
-       - description: Explanation of what phrases to learn and why (mix of {language} for explanations and English for examples)
+       - description: Explanation of what phrases to learn and why (mix of {language} for explanations and English for examples) - MUST be wrapped in <d></d> tags
        - phrases: List of useful phrases wrapped in <s></s> tags (MUST be in English)
     6. **Vocabulary Suggestions**: List of 2-5 strings, each formatted as: <t>title</t><d>description</d><v>vocab1</v><v>vocab2</v><v>vocab3</v><v>vocab4</v>
        - title: Short description of vocabulary improvement area (in {language})
-       - description: Explanation of what vocabulary to learn and why (mix of {language} for explanations and English for examples)
+       - description: Explanation of what vocabulary to learn and why (mix of {language} for explanations and English for examples) - MUST be wrapped in <d></d> tags
        - vocab: List of useful vocabulary words wrapped in <v></v> tags (MUST be in English, minimum 4 words required)
 
     Assessment Guidelines:

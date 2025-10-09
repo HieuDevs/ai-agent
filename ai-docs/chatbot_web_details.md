@@ -311,6 +311,46 @@ Translate text to Vietnamese.
 }
 ```
 
+### 12. POST /api/assessment
+Generate conversation assessment using AssessmentAgent.
+
+**Request:**
+```json
+{
+    "session_id": "web_1234567890"
+}
+```
+
+**Response:**
+```json
+{
+    "success": true,
+    "evaluation": {
+        "level": "A2",
+        "general_skills": "Bạn có thể nói cơ bản về chủ đề bóng đá",
+        "grammar_tips": [
+            "<t>Present Continuous cho hành động đang diễn ra</t><d>Luyện tập sử dụng \"I am playing\" thay vì \"I play\" khi nói về hành động đang diễn ra. Ví dụ: \"I am playing football now\" thay vì \"I play football now\"</d>"
+        ],
+        "vocabulary_tips": [
+            "<t>Từ vựng thể thao cơ bản</t><d>Học thêm từ vựng về các môn thể thao khác như \"tennis\", \"basketball\", \"swimming\". Ví dụ: \"I like playing tennis\" hoặc \"Swimming is good exercise\"</d>"
+        ],
+        "fluency_suggestions": [
+            "<t>Bày tỏ ý kiến</t><d>Học các cụm từ để bày tỏ ý kiến một cách tự nhiên</d><s>I think that</s><s>In my opinion</s><s>I believe</s>"
+        ],
+        "vocabulary_suggestions": [
+            "<t>Từ vựng thể thao</t><d>Mở rộng từ vựng về thể thao để nói chuyện tự nhiên hơn</d><v>tournament</v><v>championship</v><v>training</v><v>competition</v>"
+        ]
+    }
+}
+```
+
+**Features:**
+- Analyzes entire conversation history
+- Determines CEFR proficiency level (A1-C2)
+- Provides structured learning tips with tagged format
+- Returns assessment in evaluation field of ChatResponse
+- Requires valid session_id with conversation history
+
 ## Frontend Features
 
 ### UI Components
@@ -341,6 +381,7 @@ Translate text to Vietnamese.
 #### 3. Input Area
 - Auto-expanding textarea
 - "💡 Hint" button (green, next to Send button)
+- "📊 End Conversation" button (orange, triggers assessment)
 - Send button (disabled when no session or sending)
 - Enter to send (Shift+Enter for new line)
 
@@ -350,6 +391,18 @@ Translate text to Vietnamese.
 - Error display
 - Save/Cancel buttons
 - Topic name input (for new prompts)
+
+#### 5. Assessment Modal
+- Displays conversation assessment results
+- Shows CEFR proficiency level
+- Organized sections for different tip types:
+  - General Skills
+  - Grammar Tips (tagged format)
+  - Vocabulary Tips (tagged format)
+  - Fluency Suggestions (with phrases)
+  - Vocabulary Suggestions (with vocab words)
+- Scrollable content for long assessments
+- Orange theme matching End Conversation button
 
 ### JavaScript Features
 
@@ -366,6 +419,9 @@ Translate text to Vietnamese.
 - `createSession()` - Initialize conversation session, display starter message
 - `sendMessage()` - Send user message via SSE
 - `showHint()` - Fetch and display suggestions for the last bot message when hint button is clicked
+- `showAssessment()` - Generate and display conversation assessment in modal
+- `displayAssessment(assessment)` - Format and render assessment data
+- `closeAssessmentModal()` - Close assessment modal
 - `addMessage(role, content, translation)` - Add message to chat, automatically adds translation for assistant messages
 - `editPrompt(topic)` - Open prompt editor
 - `savePrompt()` - Save prompt changes
@@ -388,6 +444,7 @@ Translate text to Vietnamese.
 - White cards with subtle borders
 - Success: #4CAF50
 - Error: #f44336
+- Assessment: #FF9800 (orange theme)
 
 **Responsive Design:**
 - Sidebar: 320px (280px on mobile)
@@ -460,20 +517,27 @@ For each user message after the starter:
      - Suggestions box appears below the last bot message (green theme)
      - Shows leading sentence and clickable options
      - User can click any suggestion to auto-fill input
+   - User can click "📊 End Conversation" button (in input area) anytime:
+     - Button shows "⏳ Generating..." state
+     - Opens assessment modal with loading indicator
+     - Fetches comprehensive assessment of entire conversation
+     - Displays CEFR level and structured learning tips
+     - Assessment organized in sections with orange theme
 
 This flow ensures:
-- **User control** - suggestions only appear when user requests them
+- **User control** - suggestions and assessments only appear when user requests them
 - **Maximum performance** - evaluation and AI response run in parallel
 - **No blocking** - user gets immediate AI response without waiting
 - **Progressive enhancement** - evaluation appears when ready
-- **Easy access** - hint button always visible in input area, works with latest bot message
+- **Easy access** - hint and assessment buttons always visible in input area
+- **Comprehensive feedback** - assessment provides complete conversation analysis
 
 ## Integration with Other Components
 
 ### AgentManager
 - Created per session
 - Holds conversation state
-- Routes to ConversationAgent, EvaluateAgent, SuggestionAgent
+- Routes to ConversationAgent, EvaluateAgent, SuggestionAgent, AssessmentAgent
 
 ### EvaluateAgent
 - Evaluates user messages in parallel goroutine (non-blocking)
@@ -491,6 +555,18 @@ This flow ensures:
 - Removes previous suggestions if hint button clicked again
 - Works independently for each message (no conversation history required)
 
+### AssessmentAgent
+- Generates comprehensive conversation assessment when user clicks "📊 End Conversation" button
+- Analyzes entire conversation history to determine CEFR proficiency level
+- Provides structured learning tips with tagged format:
+  - Grammar tips with titles in target language, descriptions mixed
+  - Vocabulary tips with context-specific suggestions
+  - Fluency suggestions with English phrases
+  - Vocabulary suggestions with English words
+- Returns assessment in modal dialog with organized sections
+- Uses ConversationHistoryManager for conversation analysis
+- Assessment appears in dedicated modal with orange theme
+
 ### Translation Service
 - Called for all assistant messages
 - Displayed below English response
@@ -504,4 +580,10 @@ This flow ensures:
 - Dynamically loads from `/prompts/` directory
 - YAML-based format
 - Per-level configuration
+
+## Recent Updates
+
+### JavaScript Optimizations
+- **escapeHtml function**: Optimized to use DOM textContent/innerHTML for better performance and reliability
+- **Assessment logging**: Added console.log for assessment objects to aid debugging
 
