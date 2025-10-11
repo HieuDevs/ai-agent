@@ -77,7 +77,7 @@ func (cw *ChatbotWeb) StartWebServer(port string) {
 	http.HandleFunc("/api/stream", cw.handleStream)
 	http.HandleFunc("/api/translate", cw.handleTranslate)
 	http.HandleFunc("/api/suggestions", cw.handleGetSuggestions)
-	http.HandleFunc("/api/assessment", cw.handleGetAssessment)
+	http.HandleFunc("/api/assessment", cw.handleGetAssessmentStream)
 	// Prompts + Topics
 	http.HandleFunc("/api/prompts", cw.handleGetPrompts)
 	http.HandleFunc("/api/topics", cw.handleGetTopics)
@@ -504,6 +504,25 @@ func (cw *ChatbotWeb) handleSavePrompt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Clear prompt caches to reload updated configuration
+	if strings.HasPrefix(req.Topic, "_") {
+		// System prompt - clear specific cache based on topic
+		switch req.Topic {
+		case "_suggestion_vocab":
+			utils.ClearSuggestionPromptCache()
+		case "_evaluate":
+			utils.ClearEvaluatePromptCache()
+		case "_assessment":
+			utils.ClearAssessmentPromptCache()
+		default:
+			// For other system prompts, clear all caches to be safe
+			utils.ClearAllPromptCaches()
+		}
+	} else {
+		// Regular conversation prompt - clear conversation cache for this topic
+		utils.ClearConversationPromptCache()
+	}
+
 	shouldReset := false
 	cw.mu.Lock()
 	for _, manager := range cw.sessions {
@@ -613,6 +632,25 @@ func (cw *ChatbotWeb) handleCreatePrompt(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Clear prompt caches to reload updated configuration
+	if strings.HasPrefix(req.Topic, "_") {
+		// System prompt - clear specific cache based on topic
+		switch req.Topic {
+		case "_suggestion_vocab":
+			utils.ClearSuggestionPromptCache()
+		case "_evaluate":
+			utils.ClearEvaluatePromptCache()
+		case "_assessment":
+			utils.ClearAssessmentPromptCache()
+		default:
+			// For other system prompts, clear all caches to be safe
+			utils.ClearAllPromptCaches()
+		}
+	} else {
+		// Regular conversation prompt - clear conversation cache for this topic
+		utils.ClearConversationPromptCache()
+	}
+
 	json.NewEncoder(w).Encode(ChatResponse{
 		Success: true,
 		Message: "Prompt file created successfully",
@@ -664,6 +702,25 @@ func (cw *ChatbotWeb) handleDeletePrompt(w http.ResponseWriter, r *http.Request)
 			Message: "Failed to delete prompt file",
 		})
 		return
+	}
+
+	// Clear prompt caches to reload updated configuration
+	if strings.HasPrefix(req.Topic, "_") {
+		// System prompt - clear specific cache based on topic
+		switch req.Topic {
+		case "_suggestion_vocab":
+			utils.ClearSuggestionPromptCache()
+		case "_evaluate":
+			utils.ClearEvaluatePromptCache()
+		case "_assessment":
+			utils.ClearAssessmentPromptCache()
+		default:
+			// For other system prompts, clear all caches to be safe
+			utils.ClearAllPromptCaches()
+		}
+	} else {
+		// Regular conversation prompt - clear conversation cache for this topic
+		utils.ClearConversationPromptCache()
 	}
 
 	json.NewEncoder(w).Encode(ChatResponse{
@@ -802,84 +859,127 @@ func (cw *ChatbotWeb) handleGetSuggestions(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-func (cw *ChatbotWeb) handleGetAssessment(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
+func (cw *ChatbotWeb) handleGetAssessmentStream(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-
-	var req struct {
-		SessionID string `json:"session_id"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		json.NewEncoder(w).Encode(ChatResponse{
-			Success: false,
-			Message: "Invalid request",
-		})
+	sessionID := r.URL.Query().Get("session_id")
+	if sessionID == "" {
+		http.Error(w, "Session ID is required", http.StatusBadRequest)
 		return
 	}
 
-	if req.SessionID == "" {
-		json.NewEncoder(w).Encode(ChatResponse{
-			Success: false,
-			Message: "Session ID is required",
-		})
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
 		return
 	}
 
 	cw.mu.Lock()
 	defer cw.mu.Unlock()
 
-	manager, exists := cw.sessions[req.SessionID]
+	manager, exists := cw.sessions[sessionID]
 	if !exists {
-		json.NewEncoder(w).Encode(ChatResponse{
-			Success: false,
-			Message: "Invalid session ID",
-		})
+		http.Error(w, "Invalid session ID", http.StatusBadRequest)
 		return
 	}
 
 	assessmentAgent, exists := manager.GetAgent("AssessmentAgent")
 	if !exists {
-		json.NewEncoder(w).Encode(ChatResponse{
-			Success: false,
-			Message: "Assessment agent not available",
-		})
+		http.Error(w, "Assessment agent not available", http.StatusBadRequest)
 		return
 	}
 
-	assessmentJob := models.JobRequest{
-		Task:          "assess proficiency level",
-		UserMessage:   "",
-		LastAIMessage: "",
-		Metadata:      manager.GetHistoryManager(),
-	}
-
-	assessmentResponse := assessmentAgent.ProcessTask(assessmentJob)
-	if !assessmentResponse.Success {
-		json.NewEncoder(w).Encode(ChatResponse{
-			Success: false,
-			Message: "Failed to generate assessment",
-		})
+	historyManager := manager.GetHistoryManager()
+	if historyManager.Len() == 0 {
+		errorData := map[string]any{
+			"done":  true,
+			"type":  "error",
+			"error": "No conversation history available for assessment",
+		}
+		errorJSON, _ := json.Marshal(errorData)
+		fmt.Fprintf(w, "data: %s\n\n", errorJSON)
+		flusher.Flush()
 		return
 	}
 
-	var assessmentMap map[string]any
-	if err := json.Unmarshal([]byte(assessmentResponse.Result), &assessmentMap); err != nil {
-		json.NewEncoder(w).Encode(ChatResponse{
-			Success: false,
-			Message: "Failed to parse assessment",
-		})
-		return
-	}
+	// Create progress channel
+	progressChan := make(chan models.AssessmentStreamResponse, 100)
 
-	json.NewEncoder(w).Encode(ChatResponse{
-		Success:    true,
-		Evaluation: assessmentMap,
-	})
+	// Start streaming assessment
+	go func() {
+		if aa, ok := assessmentAgent.(*agents.AssessmentAgent); ok {
+			aa.GenerateAssessmentStream(historyManager, progressChan)
+		} else {
+			progressChan <- models.AssessmentStreamResponse{
+				Error: "Assessment agent type assertion failed",
+			}
+		}
+	}()
+
+	// Handle progress events
+	for response := range progressChan {
+		if response.Error != "" {
+			errorData := map[string]any{
+				"done":  true,
+				"type":  "error",
+				"error": response.Error,
+			}
+			errorJSON, _ := json.Marshal(errorData)
+			fmt.Fprintf(w, "data: %s\n\n", errorJSON)
+			flusher.Flush()
+			return
+		}
+
+		if response.ProgressEvent != nil {
+			event := response.ProgressEvent
+			progressData := map[string]any{
+				"done": false,
+				"type": "progress",
+				"data": map[string]any{
+					"type":        event.Type,
+					"message":     event.Message,
+					"progress":    event.Progress,
+					"is_complete": event.IsComplete,
+				},
+			}
+			progressJSON, _ := json.Marshal(progressData)
+			fmt.Fprintf(w, "data: %s\n\n", progressJSON)
+			flusher.Flush()
+		}
+
+		if response.FinalResult != "" {
+			// Parse and send final assessment result
+			var assessmentMap map[string]any
+			if err := json.Unmarshal([]byte(response.FinalResult), &assessmentMap); err == nil {
+				finalData := map[string]any{
+					"done":       true,
+					"type":       "assessment",
+					"assessment": assessmentMap,
+				}
+				finalJSON, _ := json.Marshal(finalData)
+				fmt.Fprintf(w, "data: %s\n\n", finalJSON)
+				flusher.Flush()
+			} else {
+				errorData := map[string]any{
+					"done":  true,
+					"type":  "error",
+					"error": "Failed to parse assessment result",
+				}
+				errorJSON, _ := json.Marshal(errorData)
+				fmt.Fprintf(w, "data: %s\n\n", errorJSON)
+				flusher.Flush()
+			}
+			break
+		}
+	}
 }
 
 func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
@@ -2267,35 +2367,73 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
             assessmentBtn.disabled = true;
             assessmentBtn.textContent = '⏳ Generating...';
 
-            try {
-                const response = await fetch('/api/assessment', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ 
-                        session_id: currentSessionID
-                    })
-                });
-                const data = await response.json();
+            // Show initial loading state
+            document.getElementById('assessmentContent').innerHTML = 
+                '<div style="text-align: center; padding: 40px;">' +
+                '<div style="font-size: 48px; margin-bottom: 20px;">⏳</div>' +
+                '<div>Starting assessment...</div>' +
+                '<div id="progressIndicator" style="margin-top: 20px; font-size: 14px; color: #666;"></div>' +
+                '</div>';
 
-                if (data.success && data.evaluation) {
-                    displayAssessment(data.evaluation);
-                } else {
+            try {
+                const eventSource = new EventSource('/api/assessment?session_id=' + encodeURIComponent(currentSessionID));
+                
+                eventSource.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    console.log('Assessment SSE Event:', data.type, data);
+                    
+                    if (data.done) {
+                        eventSource.close();
+                        assessmentBtn.disabled = false;
+                        assessmentBtn.textContent = originalText;
+                        
+                        if (data.type === 'error') {
+                            document.getElementById('assessmentContent').innerHTML = 
+                                '<div style="text-align: center; padding: 40px; color: #f44336;">' +
+                                '<div style="font-size: 48px; margin-bottom: 20px;">❌</div>' +
+                                '<div>' + escapeHtml(data.error) + '</div>' +
+                                '</div>';
+                        } else if (data.type === 'assessment') {
+                            displayAssessment(data.assessment);
+                        }
+                    } else if (data.type === 'progress') {
+                        // Update progress indicator
+                        const progressDiv = document.getElementById('progressIndicator');
+                        if (progressDiv) {
+                            const emoji = {
+                                'level_assessment': '🔍',
+                                'skills_evaluation': '📝',
+                                'grammar_tips': '📚',
+                                'vocabulary_tips': '📖',
+                                'fluency_suggestions': '💬',
+                                'vocabulary_suggestions': '🎯',
+                                'completed': '✅'
+                            };
+                            const emojiIcon = emoji[data.data.type] || '⏳';
+                            progressDiv.innerHTML = emojiIcon + ' ' + escapeHtml(data.data.message) + ' (' + data.data.progress + '%)';
+                        }
+                    }
+                };
+                
+                eventSource.onerror = () => {
+                    eventSource.close();
+                    assessmentBtn.disabled = false;
+                    assessmentBtn.textContent = originalText;
                     document.getElementById('assessmentContent').innerHTML = 
                         '<div style="text-align: center; padding: 40px; color: #f44336;">' +
                         '<div style="font-size: 48px; margin-bottom: 20px;">❌</div>' +
-                        '<div>' + (data.message || 'Failed to generate assessment') + '</div>' +
+                        '<div>Failed to generate assessment</div>' +
                         '</div>';
-                }
+                };
             } catch (error) {
                 console.error('Error getting assessment:', error);
+                assessmentBtn.disabled = false;
+                assessmentBtn.textContent = originalText;
                 document.getElementById('assessmentContent').innerHTML = 
                     '<div style="text-align: center; padding: 40px; color: #f44336;">' +
                     '<div style="font-size: 48px; margin-bottom: 20px;">❌</div>' +
                     '<div>Failed to generate assessment</div>' +
                     '</div>';
-            } finally {
-                assessmentBtn.disabled = false;
-                assessmentBtn.textContent = originalText;
             }
         }
 

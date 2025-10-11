@@ -247,6 +247,11 @@ Save edited prompt file.
 
 **Behavior:**
 - Saves prompt to file
+- **NEW**: Automatically clears prompt configuration cache to reload updated settings
+- **NEW**: Smart cache clearing based on prompt type:
+  - System prompts (`_suggestion_vocab`, `_evaluate`, `_assessment`): Clear specific agent cache
+  - Regular conversation prompts: Clear conversation prompt cache
+  - Unknown system prompts: Clear all caches for safety
 - If current session uses edited topic, resets conversation
 - Resets all sessions using the edited topic
 
@@ -274,6 +279,8 @@ Create new prompt file.
 - If content is empty, generates default template
 - Validates topic doesn't already exist
 - Creates basic conversation levels structure
+- **NEW**: Automatically clears prompt configuration cache to reload updated settings
+- **NEW**: Smart cache clearing based on prompt type (same as save endpoint)
 
 ### 10. POST /api/prompt/delete
 Delete a prompt file.
@@ -292,6 +299,10 @@ Delete a prompt file.
     "message": "Prompt file deleted successfully"
 }
 ```
+
+**Features:**
+- **NEW**: Automatically clears prompt configuration cache to reload updated settings
+- **NEW**: Smart cache clearing based on prompt type (same as save endpoint)
 
 ### 11. POST /api/translate
 Translate text to Vietnamese.
@@ -312,44 +323,49 @@ Translate text to Vietnamese.
 ```
 
 ### 12. POST /api/assessment
-Generate conversation assessment using AssessmentAgent.
+Generate conversation assessment with real-time progress updates using Server-Sent Events.
 
-**Request:**
-```json
-{
-    "session_id": "web_1234567890"
-}
+**Query Parameters:**
+- `session_id` - Session identifier
+
+**Response Format:**
+```javascript
+data: {"type": "progress", "data": {"type": "level_assessment", "message": "Đang đánh giá cấp độ ngôn ngữ...", "progress": 10}, "done": false}
+data: {"type": "progress", "data": {"type": "skills_evaluation", "message": "Đang đánh giá kỹ năng tổng quát...", "progress": 30}, "done": false}
+data: {"type": "progress", "data": {"type": "grammar_tips", "message": "Đang phân tích ngữ pháp...", "progress": 50}, "done": false}
+data: {"type": "progress", "data": {"type": "vocabulary_tips", "message": "Đang đánh giá từ vựng...", "progress": 70}, "done": false}
+data: {"type": "progress", "data": {"type": "fluency_suggestions", "message": "Đang tạo gợi ý cải thiện độ trôi chảy...", "progress": 85}, "done": false}
+data: {"type": "progress", "data": {"type": "vocabulary_suggestions", "message": "Đang tạo gợi ý từ vựng...", "progress": 95}, "done": false}
+data: {"type": "assessment", "assessment": {...}, "done": true}
 ```
 
-**Response:**
-```json
-{
-    "success": true,
-    "evaluation": {
-        "level": "A2",
-        "general_skills": "Bạn có thể nói cơ bản về chủ đề bóng đá",
-        "grammar_tips": [
-            "<t>Present Continuous cho hành động đang diễn ra</t><d>Luyện tập sử dụng \"I am playing\" thay vì \"I play\" khi nói về hành động đang diễn ra. Ví dụ: \"I am playing football now\" thay vì \"I play football now\"</d>"
-        ],
-        "vocabulary_tips": [
-            "<t>Từ vựng thể thao cơ bản</t><d>Học thêm từ vựng về các môn thể thao khác như \"tennis\", \"basketball\", \"swimming\". Ví dụ: \"I like playing tennis\" hoặc \"Swimming is good exercise\"</d>"
-        ],
-        "fluency_suggestions": [
-            "<t>Bày tỏ ý kiến</t><d>Học các cụm từ để bày tỏ ý kiến một cách tự nhiên</d><s>I think that</s><s>In my opinion</s><s>I believe</s>"
-        ],
-        "vocabulary_suggestions": [
-            "<t>Từ vựng thể thao</t><d>Mở rộng từ vựng về thể thao để nói chuyện tự nhiên hơn</d><v>tournament</v><v>championship</v><v>training</v><v>competition</v>"
-        ]
-    }
-}
-```
+**Event Types:**
+1. **progress** - Real-time progress updates with Vietnamese messages
+   - Contains: `type`, `message`, `progress`, `is_complete`
+   - Shows current assessment phase with percentage
+   - Emoji indicators for each phase (🔍, 📝, 📚, 📖, 💬, 🎯)
+2. **assessment** - Final assessment result
+   - Contains: Complete assessment object with level and tips
+3. **error** - Error occurred during assessment
+   - Contains: Error message
 
 **Features:**
-- Analyzes entire conversation history
-- Determines CEFR proficiency level (A1-C2)
-- Provides structured learning tips with tagged format
-- Returns assessment in evaluation field of ChatResponse
-- Requires valid session_id with conversation history
+- Real-time progress updates with Vietnamese messages
+- Content-based progress estimation from JSON analysis
+- Milestone-based event emission (only when reaching new progress levels)
+- Server-Sent Events for streaming updates
+- Visual progress indicators with emojis
+- Same assessment quality as non-streaming version
+- Enhanced user experience with immediate feedback
+
+**Progress Phases:**
+1. **Level Assessment** (10%): "Đang đánh giá cấp độ ngôn ngữ..."
+2. **Skills Evaluation** (30%): "Đang đánh giá kỹ năng tổng quát..."
+3. **Grammar Analysis** (50%): "Đang phân tích ngữ pháp..."
+4. **Vocabulary Assessment** (70%): "Đang đánh giá từ vựng..."
+5. **Fluency Suggestions** (85%): "Đang tạo gợi ý cải thiện độ trôi chảy..."
+6. **Vocabulary Suggestions** (95%): "Đang tạo gợi ý từ vựng..."
+7. **Completion** (100%): Final assessment result
 
 ## Frontend Features
 
@@ -393,8 +409,9 @@ Generate conversation assessment using AssessmentAgent.
 - Topic name input (for new prompts)
 
 #### 5. Assessment Modal
-- Displays conversation assessment results
+- Displays conversation assessment results with streaming progress
 - Shows CEFR proficiency level
+- Real-time progress updates with Vietnamese messages and emojis
 - Organized sections for different tip types:
   - General Skills
   - Grammar Tips (tagged format)
@@ -403,6 +420,7 @@ Generate conversation assessment using AssessmentAgent.
   - Vocabulary Suggestions (with vocab words)
 - Scrollable content for long assessments
 - Orange theme matching End Conversation button
+- Progress phases: Level Assessment → Skills Evaluation → Grammar Analysis → Vocabulary Assessment → Fluency Suggestions → Vocabulary Suggestions → Completion
 
 ### JavaScript Features
 
@@ -419,7 +437,7 @@ Generate conversation assessment using AssessmentAgent.
 - `createSession()` - Initialize conversation session, display starter message
 - `sendMessage()` - Send user message via SSE
 - `showHint()` - Fetch and display suggestions for the last bot message when hint button is clicked
-- `showAssessment()` - Generate and display conversation assessment in modal
+- `showAssessment()` - Generate and display conversation assessment with streaming progress in modal
 - `displayAssessment(assessment)` - Format and render assessment data
 - `closeAssessmentModal()` - Close assessment modal
 - `addMessage(role, content, translation)` - Add message to chat, automatically adds translation for assistant messages
@@ -519,10 +537,12 @@ For each user message after the starter:
      - User can click any suggestion to auto-fill input
    - User can click "📊 End Conversation" button (in input area) anytime:
      - Button shows "⏳ Generating..." state
-     - Opens assessment modal with loading indicator
-     - Fetches comprehensive assessment of entire conversation
+     - Opens assessment modal with streaming progress indicator
+     - Uses Server-Sent Events for real-time progress updates
+     - Shows Vietnamese progress messages with emojis (🔍📝📚📖💬🎯✅)
      - Displays CEFR level and structured learning tips
      - Assessment organized in sections with orange theme
+     - Progress phases: Level Assessment → Skills Evaluation → Grammar Analysis → Vocabulary Assessment → Fluency Suggestions → Vocabulary Suggestions → Completion
 
 This flow ensures:
 - **User control** - suggestions and assessments only appear when user requests them
@@ -566,6 +586,10 @@ This flow ensures:
 - Returns assessment in modal dialog with organized sections
 - Uses ConversationHistoryManager for conversation analysis
 - Assessment appears in dedicated modal with orange theme
+- **NEW**: Streaming assessment with real-time progress updates via Server-Sent Events
+- **NEW**: Content-based progress estimation from JSON analysis
+- **NEW**: Vietnamese progress messages with emoji indicators
+- **NEW**: Milestone-based event emission for efficient progress tracking
 
 ### Translation Service
 - Called for all assistant messages
@@ -581,7 +605,46 @@ This flow ensures:
 - YAML-based format
 - Per-level configuration
 
+## Cache Management System
+
+### Prompt Configuration Caching
+The system uses in-memory caching for prompt configurations to improve performance:
+
+**Cache Types:**
+- `conversationPromptMemCache` - Caches conversation prompt configurations by file path
+- `suggestionPromptMemCache` - Caches SuggestionAgent configuration
+- `evaluatePromptMemCache` - Caches EvaluateAgent configuration  
+- `assessmentPromptMemCache` - Caches AssessmentAgent configuration
+
+**Cache Clearing Functions:**
+- `ClearConversationPromptCache()` - Clears conversation prompt cache
+- `ClearSuggestionPromptCache()` - Clears SuggestionAgent cache
+- `ClearEvaluatePromptCache()` - Clears EvaluateAgent cache
+- `ClearAssessmentPromptCache()` - Clears AssessmentAgent cache
+- `ClearAllPromptCaches()` - Clears all prompt caches
+
+**Automatic Cache Management:**
+- **Save/Create/Delete Operations**: All prompt file operations automatically clear relevant caches
+- **Smart Cache Selection**: System intelligently determines which cache to clear based on prompt type:
+  - System prompts (`_suggestion_vocab`, `_evaluate`, `_assessment`): Clear specific agent cache
+  - Regular conversation prompts: Clear conversation prompt cache
+  - Unknown system prompts: Clear all caches for safety
+- **Immediate Effect**: Changes take effect immediately without server restart
+- **Thread Safety**: Cache operations are thread-safe for concurrent access
+
+**Benefits:**
+- **Performance**: Avoids repeated file I/O operations
+- **Consistency**: Ensures all agents use updated configurations immediately
+- **Reliability**: Prevents stale configuration issues
+- **User Experience**: Changes are applied instantly in the web interface
+
 ## Recent Updates
+
+### Cache Management System
+- **NEW**: Added automatic prompt configuration cache clearing on save/create/delete operations
+- **NEW**: Implemented smart cache selection based on prompt type
+- **NEW**: Added dedicated cache clearing functions in utils/config.go
+- **NEW**: Enhanced prompt management with immediate configuration reload
 
 ### JavaScript Optimizations
 - **escapeHtml function**: Optimized to use DOM textContent/innerHTML for better performance and reliability

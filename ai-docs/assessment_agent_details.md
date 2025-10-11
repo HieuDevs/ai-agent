@@ -424,6 +424,9 @@ func (co *ChatbotOrchestrator) showAssessment() {
 - **Transparency**: Clear indication of what's happening during assessment
 - **Engagement**: Visual progress indicators keep users engaged
 - **Error Handling**: Immediate error reporting if assessment fails
+- **Content-Based Progress**: Progress estimation based on actual JSON content analysis
+- **Milestone Tracking**: Events only sent when reaching new milestones
+- **Performance Optimized**: Non-blocking streaming with efficient progress detection
 
 ## CEFR Level Descriptions
 

@@ -250,3 +250,26 @@ func LoadAssessmentConfig() (*AssessmentPromptConfig, error) {
 	assessmentPromptMemCache = &config
 	return assessmentPromptMemCache, nil
 }
+
+func ClearConversationPromptCache() {
+	conversationPromptMemCache = make(map[string]PromptConfig)
+}
+
+func ClearSuggestionPromptCache() {
+	suggestionPromptMemCache = nil
+}
+
+func ClearEvaluatePromptCache() {
+	evaluatePromptMemCache = nil
+}
+
+func ClearAssessmentPromptCache() {
+	assessmentPromptMemCache = nil
+}
+
+func ClearAllPromptCaches() {
+	ClearConversationPromptCache()
+	ClearSuggestionPromptCache()
+	ClearEvaluatePromptCache()
+	ClearAssessmentPromptCache()
+}
