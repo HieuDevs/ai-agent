@@ -40,25 +40,38 @@ func runEnglishChatbot(apiKey string) {
 
 	yellow.Println("\n🎯 Starting English Conversation Chatbot...")
 
-	useGUI := getInterfaceChoice()
+	choice := getInterfaceChoice()
 
-	if useGUI {
+	switch choice {
+	case "web":
 		green.Println("🚀 Starting Web UI server...")
 		green.Println("📋 You can select topic and level in the browser")
 		fmt.Println()
 		runChatbotWebUI(apiKey)
-	} else {
-		topic := getUserInput("sports")
-		level := getConversationLevel()
-		language := getLanguage()
-		green.Printf("🚀 Launching chatbot with topic: %s, level: %s, language: %s\n\n", topic, level, language)
-		runChatbotWithTopic(apiKey, models.ConversationLevel(level), topic, language)
+	case "conversation":
+		green.Println("💬 Starting CLI conversation mode...")
+		runChatbotConversation(apiKey)
+	case "personalize":
+		green.Println("📚 Starting CLI personalize mode...")
+		runChatbotPersonalize(apiKey)
 	}
 }
 
-func runChatbotWithTopic(apiKey string, level models.ConversationLevel, topic string, language string) {
-	chatbot := gateway.NewChatbotOrchestrator(apiKey, level, topic, language)
+func runChatbotConversation(apiKey string) {
+	topic := getUserInput("sports")
+	level := getConversationLevel()
+	language := getLanguage()
+
+	green := color.New(color.FgGreen)
+	green.Printf("🚀 Launching conversation with topic: %s, level: %s, language: %s\n\n", topic, level, language)
+
+	chatbot := gateway.NewChatbotOrchestrator(apiKey, models.ConversationLevel(level), topic, language)
 	chatbot.StartConversation()
+}
+
+func runChatbotPersonalize(apiKey string) {
+	chatbot := gateway.NewChatbotOrchestrator(apiKey, "", "", "")
+	chatbot.StartPersonalizeMode()
 }
 
 func runChatbotWebUI(apiKey string) {
@@ -66,34 +79,40 @@ func runChatbotWebUI(apiKey string) {
 	chatbot.StartWebServer("8080")
 }
 
-func getInterfaceChoice() bool {
+func getInterfaceChoice() string {
 	blue := color.New(color.FgCyan)
 	yellow := color.New(color.FgYellow)
 	green := color.New(color.FgGreen)
 
 	blue.Println("\n🖥️  Choose your interface:")
 	blue.Println("1. Web UI (Browser Interface)")
-	blue.Println("2. CLI (Command Line Interface)")
+	blue.Println("2. CLI Conversation (Command Line Interface)")
+	blue.Println("3. CLI Personalize (Create Vocabulary Lessons)")
 
 	reader := bufio.NewReader(os.Stdin)
 
 	for {
-		green.Print("Enter your choice (1-2, default: Web UI): ")
+		green.Print("Enter your choice (1-3, default: Web UI): ")
 		input, _ := reader.ReadString('\n')
 		input = strings.TrimSpace(input)
 
 		if input == "" || input == "1" {
 			yellow.Println("Using Web UI interface")
-			return true
+			return "web"
 		}
 
 		if input == "2" {
-			yellow.Println("Using CLI interface")
-			return false
+			yellow.Println("Using CLI conversation interface")
+			return "conversation"
+		}
+
+		if input == "3" {
+			yellow.Println("Using CLI personalize interface")
+			return "personalize"
 		}
 
 		red := color.New(color.FgRed)
-		red.Println("Invalid input. Please enter 1 for Web UI or 2 for CLI.")
+		red.Println("Invalid input. Please enter 1 for Web UI, 2 for CLI Conversation, or 3 for CLI Personalize.")
 	}
 }
 

@@ -12,6 +12,8 @@ var conversationPromptMemCache = make(map[string]PromptConfig)
 var suggestionPromptMemCache *SuggestionPromptConfig
 var evaluatePromptMemCache *EvaluatePromptConfig
 var assessmentPromptMemCache *AssessmentPromptConfig
+var personalizeVocabPromptMemCache *PersonalizeVocabPromptConfig
+var personalizeLessonPromptMemCache *PersonalizeLessonPromptConfig
 
 type PromptConfig struct {
 	ConversationLevels map[string]LevelConfig `yaml:"conversation_levels"`
@@ -75,6 +77,48 @@ type AssessmentAgentConfig struct {
 	LLM                LLMSettings `yaml:"llm"`
 	BasePrompt         string      `yaml:"base_prompt"`
 	UserPromptTemplate string      `yaml:"user_prompt_template"`
+}
+
+type PersonalizeVocabPromptConfig struct {
+	PersonalizeVocabAgent PersonalizeVocabAgentConfig `yaml:"personalize_vocab_agent"`
+}
+
+type PersonalizeVocabAgentConfig struct {
+	LLM                LLMSettings                            `yaml:"llm"`
+	BasePrompt         string                                 `yaml:"base_prompt"`
+	UserPromptTemplate string                                 `yaml:"user_prompt_template"`
+	LevelGuidelines    map[string]PersonalizeVocabLevelConfig `yaml:"level_guidelines"`
+	KeyPrinciples      []string                               `yaml:"key_principles"`
+}
+
+type PersonalizeVocabLevelConfig struct {
+	Name               string   `yaml:"name"`
+	Description        string   `yaml:"description"`
+	Guidelines         []string `yaml:"guidelines"`
+	ExampleEmoji       string   `yaml:"example_emoji"`
+	ExampleTitle       string   `yaml:"example_title"`
+	ExampleDescription string   `yaml:"example_description"`
+}
+
+type PersonalizeLessonPromptConfig struct {
+	PersonalizeLessonAgent PersonalizeLessonAgentConfig `yaml:"personalize_lesson_agent"`
+}
+
+type PersonalizeLessonAgentConfig struct {
+	LLM                LLMSettings                             `yaml:"llm"`
+	BasePrompt         string                                  `yaml:"base_prompt"`
+	UserPromptTemplate string                                  `yaml:"user_prompt_template"`
+	LevelGuidelines    map[string]PersonalizeLessonLevelConfig `yaml:"level_guidelines"`
+	KeyPrinciples      []string                                `yaml:"key_principles"`
+}
+
+type PersonalizeLessonLevelConfig struct {
+	Name               string   `yaml:"name"`
+	Description        string   `yaml:"description"`
+	Guidelines         []string `yaml:"guidelines"`
+	ExampleEmoji       string   `yaml:"example_emoji"`
+	ExampleTitle       string   `yaml:"example_title"`
+	ExampleDescription string   `yaml:"example_description"`
 }
 
 type LLMSettings struct {
@@ -267,9 +311,67 @@ func ClearAssessmentPromptCache() {
 	assessmentPromptMemCache = nil
 }
 
+func LoadPersonalizeVocabConfig() (*PersonalizeVocabPromptConfig, error) {
+	if personalizeVocabPromptMemCache != nil {
+		return personalizeVocabPromptMemCache, nil
+	}
+
+	path := filepath.Join(GetPromptsDir(), "_personalize_vocab_prompt.yaml")
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return nil, fmt.Errorf("personalize vocab config file not found: %s", path)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read personalize vocab config file: %w", err)
+	}
+
+	var config PersonalizeVocabPromptConfig
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse personalize vocab YAML config: %w", err)
+	}
+
+	personalizeVocabPromptMemCache = &config
+	return personalizeVocabPromptMemCache, nil
+}
+
+func ClearPersonalizeVocabPromptCache() {
+	personalizeVocabPromptMemCache = nil
+}
+
+func LoadPersonalizeLessonConfig() (*PersonalizeLessonPromptConfig, error) {
+	if personalizeLessonPromptMemCache != nil {
+		return personalizeLessonPromptMemCache, nil
+	}
+
+	path := filepath.Join(GetPromptsDir(), "_personalize_lesson_prompt.yaml")
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return nil, fmt.Errorf("personalize lesson config file not found: %s", path)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read personalize lesson config file: %w", err)
+	}
+
+	var config PersonalizeLessonPromptConfig
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse personalize lesson YAML config: %w", err)
+	}
+
+	personalizeLessonPromptMemCache = &config
+	return personalizeLessonPromptMemCache, nil
+}
+
+func ClearPersonalizeLessonPromptCache() {
+	personalizeLessonPromptMemCache = nil
+}
+
 func ClearAllPromptCaches() {
 	ClearConversationPromptCache()
 	ClearSuggestionPromptCache()
 	ClearEvaluatePromptCache()
 	ClearAssessmentPromptCache()
+	ClearPersonalizeVocabPromptCache()
+	ClearPersonalizeLessonPromptCache()
 }

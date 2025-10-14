@@ -13,7 +13,7 @@ import (
 	"github.com/fatih/color"
 )
 
-type AgentManager struct {
+type ConversationManager struct {
 	apiClient      client.Client
 	agents         map[string]models.Agent
 	currentJob     *models.JobRequest
@@ -21,10 +21,10 @@ type AgentManager struct {
 	historyManager *services.ConversationHistoryManager
 }
 
-func NewManager(apiKey string, level models.ConversationLevel, topic string, language string, sessionId string) *AgentManager {
+func NewConversationManager(apiKey string, level models.ConversationLevel, topic string, language string, sessionId string) *ConversationManager {
 	client := client.NewOpenRouterClient(apiKey)
 
-	manager := &AgentManager{
+	manager := &ConversationManager{
 		apiClient:      client,
 		agents:         make(map[string]models.Agent),
 		sessionId:      sessionId,
@@ -35,7 +35,7 @@ func NewManager(apiKey string, level models.ConversationLevel, topic string, lan
 	return manager
 }
 
-func (m *AgentManager) RegisterAgents(level models.ConversationLevel, topic string, language string) {
+func (m *ConversationManager) RegisterAgents(level models.ConversationLevel, topic string, language string) {
 	conversationAgent := agents.NewConversationAgent(m.apiClient, level, topic, m.historyManager)
 	suggestionAgent := agents.NewSuggestionAgent(m.apiClient, level, topic, language)
 	evaluateAgent := agents.NewEvaluateAgent(m.apiClient, level, topic, language)
@@ -53,7 +53,7 @@ func (m *AgentManager) RegisterAgents(level models.ConversationLevel, topic stri
 	}
 }
 
-func (m *AgentManager) SelectAgent(task models.JobRequest) (models.Agent, error) {
+func (m *ConversationManager) SelectAgent(task models.JobRequest) (models.Agent, error) {
 	for _, agent := range m.agents {
 		if agent.CanHandle(task.Task) {
 			utils.PrintInfo(fmt.Sprintf("Selected agent: %s for task: %s", agent.Name(), task.Task))
@@ -64,7 +64,7 @@ func (m *AgentManager) SelectAgent(task models.JobRequest) (models.Agent, error)
 	return nil, fmt.Errorf("no suitable agent found for task: %s", task.Task)
 }
 
-func (m *AgentManager) ListAgents() {
+func (m *ConversationManager) ListAgents() {
 	utils.PrintInfo("Available Agents:")
 	for _, agent := range m.agents {
 		cyan := color.New(color.FgCyan)
@@ -75,16 +75,16 @@ func (m *AgentManager) ListAgents() {
 	}
 }
 
-func (m *AgentManager) GetAgent(name string) (models.Agent, bool) {
+func (m *ConversationManager) GetAgent(name string) (models.Agent, bool) {
 	agent, exists := m.agents[name]
 	return agent, exists
 }
 
-func (m *AgentManager) GetHistoryManager() *services.ConversationHistoryManager {
+func (m *ConversationManager) GetHistoryManager() *services.ConversationHistoryManager {
 	return m.historyManager
 }
 
-func (m *AgentManager) GetConversationAgent() *agents.ConversationAgent {
+func (m *ConversationManager) GetConversationAgent() *agents.ConversationAgent {
 	agent, exists := m.GetAgent("ConversationAgent")
 	if !exists {
 		return nil
@@ -92,7 +92,7 @@ func (m *AgentManager) GetConversationAgent() *agents.ConversationAgent {
 	return agent.(*agents.ConversationAgent)
 }
 
-func (m *AgentManager) GetAssessmentAgent() *agents.AssessmentAgent {
+func (m *ConversationManager) GetAssessmentAgent() *agents.AssessmentAgent {
 	agent, exists := m.GetAgent("AssessmentAgent")
 	if !exists {
 		return nil
@@ -100,11 +100,11 @@ func (m *AgentManager) GetAssessmentAgent() *agents.AssessmentAgent {
 	return agent.(*agents.AssessmentAgent)
 }
 
-func (m *AgentManager) GetSessionId() string {
+func (m *ConversationManager) GetSessionId() string {
 	return m.sessionId
 }
 
-func (m *AgentManager) ProcessJob(job models.JobRequest) *models.JobResponse {
+func (m *ConversationManager) ProcessJob(job models.JobRequest) *models.JobResponse {
 	m.currentJob = &job
 
 	agent, err := m.SelectAgent(job)

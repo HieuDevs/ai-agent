@@ -9,6 +9,7 @@ import (
 
 	"ai-agent/utils"
 	"ai-agent/work-flows/agents"
+	"ai-agent/work-flows/client"
 	"ai-agent/work-flows/managers"
 	"ai-agent/work-flows/models"
 
@@ -16,17 +17,24 @@ import (
 )
 
 type ChatbotOrchestrator struct {
-	manager       *managers.AgentManager
-	sessionActive bool
+	conversationManager *managers.ConversationManager
+	personalizeManager  *managers.PersonalizeManager
+	sessionActive       bool
 }
 
 func NewChatbotOrchestrator(apiKey string, level models.ConversationLevel, topic string, language string) *ChatbotOrchestrator {
 	sessionId := fmt.Sprintf("cli_%d", utils.GetCurrentTimestamp())
-	manager := managers.NewManager(apiKey, level, topic, language, sessionId)
 
+	var conversationManager *managers.ConversationManager
+	if level != "" && topic != "" && language != "" {
+		conversationManager = managers.NewConversationManager(apiKey, level, topic, language, sessionId)
+	}
+
+	personalizeManager := managers.NewPersonalizeManager(client.NewOpenRouterClient(apiKey))
 	orchestrator := &ChatbotOrchestrator{
-		manager:       manager,
-		sessionActive: false,
+		conversationManager: conversationManager,
+		personalizeManager:  personalizeManager,
+		sessionActive:       false,
 	}
 
 	orchestrator.printWelcome()
@@ -34,30 +42,159 @@ func NewChatbotOrchestrator(apiKey string, level models.ConversationLevel, topic
 }
 
 func (co *ChatbotOrchestrator) printWelcome() {
-
-	yellow := color.New(color.FgYellow, color.Bold)
-	green := color.New(color.FgGreen)
-
-	green.Println("🎯 Let's start practicing! Type 'quit' to exit anytime.")
-	green.Printf("📝 All responses will be in English only. We avoid sensitive or inappropriate topics.\n")
-	yellow.Println()
+	// Welcome message is now integrated into showMainMenu
 }
 
 func (co *ChatbotOrchestrator) StartConversation() {
+	if co.conversationManager == nil {
+		utils.PrintError("Conversation manager not initialized. Please provide level, topic, and language.")
+		return
+	}
+	co.showMainMenu()
+}
+
+func (co *ChatbotOrchestrator) StartPersonalizeMode() {
+	co.createPersonalizedLesson()
+}
+
+func (co *ChatbotOrchestrator) createPersonalizedLesson() {
+	reader := bufio.NewReader(os.Stdin)
+	yellow := color.New(color.FgYellow, color.Bold)
+	green := color.New(color.FgGreen)
+	cyan := color.New(color.FgCyan)
+	white := color.New(color.FgWhite)
+
+	cyan.Println("\n📚 Create Personalized Vocabulary Lesson")
+	white.Println("Let's create a custom vocabulary lesson tailored to your interests!")
+
+	// Get topic
+	white.Print("\n➤ Enter the topic you want to learn (e.g., sports, music, travel): ")
+	topicInput, _ := reader.ReadString('\n')
+	topic := strings.TrimSpace(topicInput)
+	if topic == "" {
+		topic = "general"
+	}
+
+	// Get level
+	white.Println("\nSelect your English level:")
+	levels := []string{"beginner", "elementary", "intermediate", "upper_intermediate", "advanced", "fluent"}
+	for i, level := range levels {
+		white.Printf("%d. %s\n", i+1, strings.Title(strings.ReplaceAll(level, "_", " ")))
+	}
+
+	white.Print("\n➤ Enter your level (1-6, default: intermediate): ")
+	levelInput, _ := reader.ReadString('\n')
+	levelStr := strings.TrimSpace(levelInput)
+
+	var level string
+	if levelStr == "" {
+		level = "intermediate"
+	} else {
+		switch levelStr {
+		case "1":
+			level = levels[0]
+		case "2":
+			level = levels[1]
+		case "3":
+			level = levels[2]
+		case "4":
+			level = levels[3]
+		case "5":
+			level = levels[4]
+		case "6":
+			level = levels[5]
+		default:
+			if models.IsValidConversationLevel(levelStr) {
+				level = levelStr
+			} else {
+				level = "intermediate"
+			}
+		}
+	}
+
+	// Get language
+	white.Print("\n➤ Enter your native language (default: Vietnamese): ")
+	languageInput, _ := reader.ReadString('\n')
+	language := strings.TrimSpace(languageInput)
+	if language == "" {
+		language = "Vietnamese"
+	}
+
+	green.Printf("\n🎯 Creating personalized lesson for topic: %s, level: %s, language: %s\n", topic, level, language)
+
+	// Create the lesson
+	task := models.JobRequest{
+		Task: "create personalized lesson detail",
+		Metadata: map[string]any{
+			"topic":    topic,
+			"level":    level,
+			"language": language,
+		},
+	}
+
+	response := co.personalizeManager.ProcessTask(task)
+	if response.Success {
+		green.Println("\n✅ Personalized lesson created successfully!")
+		fmt.Println(response.Result)
+	} else {
+		yellow.Printf("❌ Failed to create lesson: %s\n", response.Error)
+	}
+
+	white.Println("\nPress Enter to continue...")
+	reader.ReadString('\n')
+}
+
+func (co *ChatbotOrchestrator) showMainMenu() {
+	reader := bufio.NewReader(os.Stdin)
+	yellow := color.New(color.FgYellow, color.Bold)
+	green := color.New(color.FgGreen)
+	cyan := color.New(color.FgCyan)
+	white := color.New(color.FgWhite)
+
+	// Show options immediately
+	cyan.Println("📋 Conversation Mode")
+	white.Println("💬 Start your English conversation practice!")
+	yellow.Println()
+
+	for {
+		fmt.Print("➤ Type 'start' to begin conversation, 'help' for commands, or 'quit' to exit: ")
+		input, _ := reader.ReadString('\n')
+		choice := strings.TrimSpace(input)
+
+		switch strings.ToLower(choice) {
+		case "start":
+			green.Println("\n💬 Starting conversation...")
+			co.startConversationMode()
+			return
+		case "quit", "exit":
+			co.endSession()
+			return
+		case "help":
+			co.showHelp()
+			continue
+		default:
+			yellow.Println("❌ Please type 'start' to begin conversation.")
+			yellow.Println("   Type 'help' for more options or 'quit' to exit.")
+			continue
+		}
+	}
+}
+
+func (co *ChatbotOrchestrator) startConversationMode() {
 	co.sessionActive = true
 
 	conversationJob := models.JobRequest{
 		Task: "conversation",
 	}
 
-	response := co.manager.ProcessJob(conversationJob)
+	response := co.conversationManager.ProcessJob(conversationJob)
 	if !response.Success {
 		utils.PrintInfo(fmt.Sprintf("Failed to start conversation: %s", response.Error))
 	} else {
 		// Update the most recent AI message or create new one if none exists
-		co.manager.GetHistoryManager().UpdateLastMessage(models.MessageRoleAssistant, response.Result)
+		co.conversationManager.GetHistoryManager().UpdateLastMessage(models.MessageRoleAssistant, response.Result)
 
-		suggestionAgent, exists := co.manager.GetAgent("SuggestionAgent")
+		suggestionAgent, exists := co.conversationManager.GetAgent("SuggestionAgent")
 		if exists && response.Success {
 			suggestionJob := models.JobRequest{
 				Task:          "suggestion",
@@ -72,7 +209,7 @@ func (co *ChatbotOrchestrator) StartConversation() {
 				// Attach suggestions to the most recent AI message
 				var suggestion models.SuggestionResponse
 				if err := json.Unmarshal([]byte(suggestionResponse.Result), &suggestion); err == nil {
-					co.manager.GetHistoryManager().UpdateLastSuggestion(&suggestion)
+					co.conversationManager.GetHistoryManager().UpdateLastSuggestion(&suggestion)
 				}
 			}
 		}
@@ -141,7 +278,7 @@ func (co *ChatbotOrchestrator) interactiveSession() {
 func (co *ChatbotOrchestrator) processUserMessage(userMessage string) {
 
 	lastAIMessage := ""
-	history := co.manager.GetHistoryManager().GetConversationHistory()
+	history := co.conversationManager.GetHistoryManager().GetConversationHistory()
 	if len(history) > 0 {
 		for i := len(history) - 1; i >= 0; i-- {
 			if history[i].Role == models.MessageRoleAssistant {
@@ -152,7 +289,7 @@ func (co *ChatbotOrchestrator) processUserMessage(userMessage string) {
 	}
 
 	// Evaluate user message and attach to exact index
-	evaluateAgent, evalExists := co.manager.GetAgent("EvaluateAgent")
+	evaluateAgent, evalExists := co.conversationManager.GetAgent("EvaluateAgent")
 	if evalExists && lastAIMessage != "" {
 		evaluateJob := models.JobRequest{
 			Task:          "evaluate",
@@ -167,7 +304,7 @@ func (co *ChatbotOrchestrator) processUserMessage(userMessage string) {
 
 			// Attach evaluation to the most recent user message
 			if parsed, err := agents.ParseEvaluationResponse(evaluateResponse.Result); err == nil {
-				co.manager.GetHistoryManager().UpdateLastEvaluation(parsed)
+				co.conversationManager.GetHistoryManager().UpdateLastEvaluation(parsed)
 			}
 		}
 	}
@@ -179,14 +316,14 @@ func (co *ChatbotOrchestrator) processUserMessage(userMessage string) {
 
 	utils.PrintInfo("Processing your message...")
 
-	conversationResponse := co.manager.ProcessJob(conversationJob)
+	conversationResponse := co.conversationManager.ProcessJob(conversationJob)
 	if !conversationResponse.Success {
 		utils.PrintError(fmt.Sprintf("Conversation failed: %s", conversationResponse.Error))
 		return
 	}
 
 	// Generate suggestions and attach to exact AI message index
-	suggestionAgent, exists := co.manager.GetAgent("SuggestionAgent")
+	suggestionAgent, exists := co.conversationManager.GetAgent("SuggestionAgent")
 	if exists {
 		suggestionJob := models.JobRequest{
 			Task:          "suggestion",
@@ -201,7 +338,7 @@ func (co *ChatbotOrchestrator) processUserMessage(userMessage string) {
 			// Attach suggestions to the most recent AI message
 			var suggestion models.SuggestionResponse
 			if err := json.Unmarshal([]byte(suggestionResponse.Result), &suggestion); err == nil {
-				co.manager.GetHistoryManager().UpdateLastSuggestion(&suggestion)
+				co.conversationManager.GetHistoryManager().UpdateLastSuggestion(&suggestion)
 			}
 		}
 	}
@@ -214,10 +351,10 @@ func (co *ChatbotOrchestrator) endSession() {
 
 	green.Println("\n🎉 Thank you for practicing English with me!")
 
-	stats := co.manager.GetHistoryManager().GetConversationStats()
+	stats := co.conversationManager.GetHistoryManager().GetConversationStats()
 	cyan.Printf("📈 Messages exchanged: %d (you: %d, me: %d)\n",
 		stats["total_messages"], stats["user_messages"], stats["bot_messages"])
-	cyan.Printf("🔑 Session ID: %s\n", co.manager.GetSessionId())
+	cyan.Printf("🔑 Session ID: %s\n", co.conversationManager.GetSessionId())
 
 	green.Println("👋 Keep practicing! See you next time!")
 }
@@ -226,9 +363,16 @@ func (co *ChatbotOrchestrator) showHelp() {
 	yellow := color.New(color.FgYellow, color.Bold)
 	white := color.New(color.FgWhite)
 	green := color.New(color.FgGreen)
+	cyan := color.New(color.FgCyan)
+
 	yellow.Println("\n📖 Available Commands:")
-	white.Println("• quit/exit - End the conversation")
+	cyan.Println("Main Menu:")
+	white.Println("• start - Begin conversation practice")
+	white.Println("• quit/exit - End the program")
 	white.Println("• help - Show this help message")
+
+	cyan.Println("\nConversation Mode Commands:")
+	white.Println("• quit/exit - End the conversation")
 	white.Println("• stats - Show conversation statistics")
 	white.Println("• history - Show conversation history and export it")
 	white.Println("• assessment - Show assessment of the conversation")
@@ -236,21 +380,22 @@ func (co *ChatbotOrchestrator) showHelp() {
 	white.Println("• level - Show current conversation level")
 	white.Println("• set level - Change conversation difficulty level")
 	white.Println("• Any other text - Continue the conversation with your response")
+
 	green.Println("\n📝 Note: All responses are in English only. We avoid sensitive or inappropriate topics.")
 }
 
 func (co *ChatbotOrchestrator) showStats() {
-	stats := co.manager.GetHistoryManager().GetConversationStats()
+	stats := co.conversationManager.GetHistoryManager().GetConversationStats()
 
 	cyan := color.New(color.FgCyan, color.Bold)
 	green := color.New(color.FgGreen)
 
 	cyan.Println("\n📊 Conversation Statistics:")
-	green.Printf("• Current level: %s\n", co.manager.GetConversationAgent().GetLevel())
+	green.Printf("• Current level: %s\n", co.conversationManager.GetConversationAgent().GetLevel())
 	green.Printf("• Total messages: %d\n", stats["total_messages"])
 	green.Printf("• Your messages: %d\n", stats["user_messages"])
 	green.Printf("• My responses: %d\n", stats["bot_messages"])
-	green.Printf("• Session ID: %s\n", co.manager.GetSessionId())
+	green.Printf("• Session ID: %s\n", co.conversationManager.GetSessionId())
 }
 
 func (co *ChatbotOrchestrator) setLevelInteractive() {
@@ -262,7 +407,7 @@ func (co *ChatbotOrchestrator) setLevelInteractive() {
 	white := color.New(color.FgWhite)
 
 	yellow.Println("\n🎯 Conversation Level Settings")
-	cyan.Printf("Current level: %s\n\n", co.manager.GetConversationAgent().GetLevel())
+	cyan.Printf("Current level: %s\n\n", co.conversationManager.GetConversationAgent().GetLevel())
 
 	green.Println("Available levels:")
 	white.Println("1. Beginner      - Simple vocabulary, basic grammar, short sentences (English only, family-friendly)")
@@ -287,7 +432,7 @@ func (co *ChatbotOrchestrator) setLevelInteractive() {
 		return
 	}
 
-	co.manager.GetConversationAgent().SetLevel(newLevel)
+	co.conversationManager.GetConversationAgent().SetLevel(newLevel)
 
 	green.Printf("✅ Level changed to: %s\n", newLevel)
 
@@ -332,7 +477,7 @@ func (co *ChatbotOrchestrator) parseLevelInput(input string) models.Conversation
 }
 
 func (co *ChatbotOrchestrator) showCurrentLevel() {
-	currentLevel := co.manager.GetConversationAgent().GetLevel()
+	currentLevel := co.conversationManager.GetConversationAgent().GetLevel()
 
 	yellow := color.New(color.FgYellow, color.Bold)
 	cyan := color.New(color.FgCyan)
@@ -353,7 +498,7 @@ func (co *ChatbotOrchestrator) showCurrentLevel() {
 
 	green.Printf("Style: %s\n", levelDescriptions[string(currentLevel)])
 
-	capabilities := co.manager.GetConversationAgent().GetLevelSpecificCapabilities()
+	capabilities := co.conversationManager.GetConversationAgent().GetLevelSpecificCapabilities()
 	white.Println("\nCapabilities:")
 	for _, capability := range capabilities {
 		white.Printf("• %s\n", capability)
@@ -363,7 +508,7 @@ func (co *ChatbotOrchestrator) showCurrentLevel() {
 }
 
 func (co *ChatbotOrchestrator) resetConversation() {
-	co.manager.GetHistoryManager().ResetConversation()
+	co.conversationManager.GetHistoryManager().ResetConversation()
 
 	green := color.New(color.FgGreen)
 	green.Println("🔄 Conversation history has been reset!")
@@ -372,15 +517,15 @@ func (co *ChatbotOrchestrator) resetConversation() {
 		Task: "conversation",
 	}
 
-	response := co.manager.ProcessJob(conversationJob)
+	response := co.conversationManager.ProcessJob(conversationJob)
 	if !response.Success {
 		utils.PrintInfo(fmt.Sprintf("Conversation reset: %s", response.Result))
 	} else {
 		// Update the most recent AI message or create new one if none exists
-		co.manager.GetHistoryManager().UpdateLastMessage(models.MessageRoleAssistant, response.Result)
+		co.conversationManager.GetHistoryManager().UpdateLastMessage(models.MessageRoleAssistant, response.Result)
 		// co.manager.GetHistoryManager().EnforceMax(20)
 
-		suggestionAgent, exists := co.manager.GetAgent("SuggestionAgent")
+		suggestionAgent, exists := co.conversationManager.GetAgent("SuggestionAgent")
 		if exists && response.Success {
 			suggestionJob := models.JobRequest{
 				Task:          "suggestion",
@@ -395,7 +540,7 @@ func (co *ChatbotOrchestrator) resetConversation() {
 				// Attach suggestions to the most recent AI message
 				var suggestion models.SuggestionResponse
 				if err := json.Unmarshal([]byte(suggestionResponse.Result), &suggestion); err == nil {
-					co.manager.GetHistoryManager().UpdateLastSuggestion(&suggestion)
+					co.conversationManager.GetHistoryManager().UpdateLastSuggestion(&suggestion)
 				}
 			}
 		}
@@ -403,7 +548,7 @@ func (co *ChatbotOrchestrator) resetConversation() {
 }
 
 func (co *ChatbotOrchestrator) showConversationHistory() {
-	history := co.manager.GetHistoryManager().GetConversationHistory()
+	history := co.conversationManager.GetHistoryManager().GetConversationHistory()
 
 	yellow := color.New(color.FgYellow, color.Bold)
 	cyan := color.New(color.FgCyan)
@@ -420,7 +565,7 @@ func (co *ChatbotOrchestrator) showConversationHistory() {
 
 	yellow.Println("\n📜 Conversation History")
 	cyan.Printf("Total messages: %d\n", len(history))
-	cyan.Printf("Session ID: %s\n\n", co.manager.GetSessionId())
+	cyan.Printf("Session ID: %s\n\n", co.conversationManager.GetSessionId())
 
 	for i, message := range history {
 		switch message.Role {
@@ -435,20 +580,20 @@ func (co *ChatbotOrchestrator) showConversationHistory() {
 
 	white.Println()
 	exportData := map[string]any{
-		"session_id": co.manager.GetSessionId(),
+		"session_id": co.conversationManager.GetSessionId(),
 		"history":    history,
 	}
 	utils.ExportToJSON("conversation_history.json", exportData, "conversation_export", "/export/history", 200)
 }
 
 func (co *ChatbotOrchestrator) showAssessment() {
-	assessmentAgent := co.manager.GetAssessmentAgent()
+	assessmentAgent := co.conversationManager.GetAssessmentAgent()
 	if assessmentAgent == nil {
 		utils.PrintError("Assessment agent not available")
 		return
 	}
 
-	historyManager := co.manager.GetHistoryManager()
+	historyManager := co.conversationManager.GetHistoryManager()
 	if historyManager.Len() == 0 {
 		yellow := color.New(color.FgYellow, color.Bold)
 		yellow.Println("\n📊 Assessment")

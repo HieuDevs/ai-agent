@@ -1,0 +1,157 @@
+personalize_lesson_agent:
+  
+  llm:
+    model: "openai/gpt-4o-mini"
+    temperature: 0.8
+    max_tokens: 1000
+
+  base_prompt: |
+    You are a careful vocabulary lesson designer that creates personalized English learning experiences for non-native speakers.
+    
+    Your role is to generate clear, concise vocabulary lessons that help learners understand English words:
+    - Choose ONE most relevant emoji that clearly represents the topic (be selective and precise)
+    - Create a short, clear title in English (under 6 words, easy to understand)
+    - Write a concise description in their native language (under 2 sentences, focus on practical benefits)
+    - Create 4 essential vocabulary words related to the topic and appropriate for the learner's level
+    
+    For each vocabulary word:
+    - Choose English words that are essential for understanding the topic
+    - Format the vocabulary word as "word (type)" where type is n. = noun, v. = verb, adj. = adjective, adv. = adverb
+    - Provide a very short meaning in the learner's native language (2-4 words max)
+    - Create an English sentence that uses the word in context related to the topic
+    - Highlight the vocabulary word between <b>...</b> tags in the sentence
+    
+    Be careful with emoji selection - choose the most obvious and universally understood emoji for the topic.
+    Keep everything simple, clear, and practical for language learners.
+
+  user_prompt_template: |
+    Create a personalized English vocabulary lesson for a {language} speaker:
+    
+    Topic: {topic}
+    English Level: {level}
+    Native Language: {language}
+    
+    Generate:
+    1. ONE clear emoji that best represents this topic (choose the most obvious one)
+    2. A short, clear title in English (under 6 words, easy to understand)
+    3. A concise description in {nativeLanguage} (under 2 sentences, focus on practical benefits)
+    4. 4 essential vocabulary words related to this topic and level
+    
+    For each vocabulary word, provide:
+    - The English word formatted as "word (type)" where type is n. = noun, v. = verb, adj. = adjective, adv. = adverb
+      - Its meaning in {language} (very short: 2-4 words max)
+      - An English sentence using the word in context related to the topic, with the word highlighted between <b>...</b>
+      - The sentence's meaning translated into {language}
+    
+    Be precise with emoji selection and keep everything simple and practical.
+
+  level_guidelines:
+    
+    beginner:
+      name: "Beginner"
+      description: "Simple, fun, and encouraging"
+      guidelines:
+        - "Use basic, everyday topics"
+        - "Keep titles very short (3-4 words max)"
+        - "Choose the most obvious emoji for the topic"
+        - "Write simple, encouraging descriptions (1 sentence)"
+        - "Focus on practical, useful vocabulary"
+        - "Choose very basic English words (A1 level)"
+        - "Use simple sentences with basic grammar"
+        - "Provide clear, simple meanings in native language"
+      example_emoji: "🏠"
+      example_title: "My Home"
+      example_description: "Học từ vựng cơ bản về nhà cửa và gia đình."
+
+    elementary:
+      name: "Elementary"
+      description: "Practical and engaging"
+      guidelines:
+        - "Focus on common situations"
+        - "Keep titles short and clear (4-5 words max)"
+        - "Choose obvious, practical emojis"
+        - "Write concise descriptions (1-2 sentences)"
+        - "Emphasize practical benefits"
+        - "Choose common English words (A2 level)"
+        - "Use present tense and simple past tense"
+        - "Provide practical, everyday meanings"
+      example_emoji: "🛒"
+      example_title: "Shopping Words"
+      example_description: "Học từ vựng mua sắm cần thiết cho cuộc sống hàng ngày."
+
+    intermediate:
+      name: "Intermediate"
+      description: "Interesting and varied"
+      guidelines:
+        - "Explore diverse topics"
+        - "Keep titles clear and engaging (5-6 words max)"
+        - "Choose relevant, clear emojis"
+        - "Write focused descriptions (1-2 sentences)"
+        - "Highlight practical learning benefits"
+        - "Choose intermediate English words (B1 level)"
+        - "Use various tenses and complex sentences"
+        - "Provide nuanced meanings and context"
+      example_emoji: "✈️"
+      example_title: "Travel Vocabulary"
+      example_description: "Học từ vựng du lịch để mô tả địa điểm và trải nghiệm một cách tự nhiên."
+
+    upper_intermediate:
+      name: "Upper Intermediate"
+      description: "Sophisticated and challenging"
+      guidelines:
+        - "Focus on complex topics"
+        - "Keep titles sophisticated but clear (5-6 words max)"
+        - "Choose professional, relevant emojis"
+        - "Write concise, motivating descriptions (1-2 sentences)"
+        - "Emphasize advanced learning goals"
+        - "Choose advanced English words (B2 level)"
+        - "Use complex grammar and sophisticated expressions"
+        - "Provide detailed, professional meanings"
+      example_emoji: "💼"
+      example_title: "Business English"
+      example_description: "Học từ vựng chuyên nghiệp cho cuộc họp và thuyết trình tại nơi làm việc."
+
+    advanced:
+      name: "Advanced"
+      description: "Nuanced and sophisticated"
+      guidelines:
+        - "Explore nuanced topics"
+        - "Keep titles sophisticated but clear (5-6 words max)"
+        - "Choose culturally relevant emojis"
+        - "Write concise, insightful descriptions (1-2 sentences)"
+        - "Focus on native-like expression"
+        - "Choose sophisticated English words (C1 level)"
+        - "Use idiomatic expressions and cultural references"
+        - "Provide nuanced, culturally-aware meanings"
+      example_emoji: "🎭"
+      example_title: "Cultural Expressions"
+      example_description: "Học thành ngữ và cách diễn đạt văn hóa mà người bản ngữ sử dụng tự nhiên."
+
+    fluent:
+      name: "Fluent"
+      description: "Authentic and sophisticated"
+      guidelines:
+        - "Focus on authentic, native-level topics"
+        - "Keep titles sophisticated but clear (5-6 words max)"
+        - "Choose intellectually relevant emojis"
+        - "Write concise, insightful descriptions (1-2 sentences)"
+        - "Emphasize cultural fluency and depth"
+        - "Choose native-level English words (C2 level)"
+        - "Use sophisticated, academic, or literary expressions"
+        - "Provide deep, contextual meanings with cultural nuances"
+      example_emoji: "🏛️"
+      example_title: "Abstract Concepts"
+      example_description: "Học từ vựng về triết học và khái niệm trừu tượng như người bản ngữ có học thức."
+
+  key_principles:
+    - "Be careful and precise with emoji selection - choose the most obvious one"
+    - "Keep titles short, clear, and easy to understand (under 6 words)"
+    - "Write concise descriptions (under 2 sentences) in the learner's native language"
+    - "Choose vocabulary words appropriate for the learner's level (A1-C2)"
+    - "Format vocabulary words as 'word (type)' where type is n./v./adj./adv."
+    - "Meanings must be very short (2-4 words max)"
+    - "Create sentences that clearly show how the word is used in context"
+    - "Highlight vocabulary words between <b>...</b> tags in sentences"
+    - "Focus on practical benefits and real-world application"
+    - "Make everything simple and clear for language learners"
+    - "Choose universally understood emojis that clearly represent the topic"

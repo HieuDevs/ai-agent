@@ -9,8 +9,8 @@ RUN go mod download
 
 COPY . .
 
-ARG TARGETARCH
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -ldflags="-w -s" -o ai-agent .
+
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o ai-agent .
 
 FROM alpine:latest
 

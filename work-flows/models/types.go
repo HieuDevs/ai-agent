@@ -159,3 +159,17 @@ type AssessmentStreamResponse struct {
 	FinalResult   string                   `json:"final_result,omitempty"`
 	Error         string                   `json:"error,omitempty"`
 }
+
+type PersonalizeVocabItem struct {
+	Vocab           string `json:"vocab"`            // English vocabulary word
+	Meaning         string `json:"meaning"`          // Meaning in native language
+	Sentence        string `json:"sentence"`         // Example sentence with vocab highlighted in <b>...</b>
+	SentenceMeaning string `json:"sentence_meaning"` // Translation of the sentence in native language
+}
+
+type PersonalizeLessonResponse struct {
+	Emoji       string                 `json:"emoji"`       // Relevant emoji for the topic
+	Title       string                 `json:"title"`       // Engaging lesson title
+	Description string                 `json:"description"` // Motivating lesson description
+	Vocabulary  []PersonalizeVocabItem `json:"vocabulary"`  // 4 essential vocabulary items
+}

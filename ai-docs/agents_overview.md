@@ -6,25 +6,34 @@ The agents package contains a modular AI agent system for an English conversatio
 
 ### Core Components
 
-#### 1. AgentManager (`managers/manager.go`)
-Central orchestrator for all agents in the system.
+#### 1. PersonalizeManager (`managers/personalize_manager.go`)
+Specialized manager for personalization-related agents and vocabulary lesson creation.
 
 **Responsibilities:**
-- Register and manage available agents
-- Route tasks to appropriate agents
-- Maintain client connections
-- Process job requests
-- Manage conversation history
-- Handle session management
+- Register and manage personalization agents
+- Route personalization tasks to appropriate agents
+- Coordinate vocabulary lesson creation
+- Handle personalize-related job requests
+- Manage agent selection for personalization tasks
 
 **Key Methods:**
-- `NewManager(apiKey, level, topic, language, sessionID)` - Initialize manager with conversation parameters
-- `RegisterAgents(level, topic, language)` - Register all available agents
-- `SelectAgent(task)` - Choose appropriate agent for task
-- `ProcessJob(job)` - Execute job with selected agent
+- `NewPersonalizeManager(client)` - Initialize manager with OpenRouter client
+- `RegisterAgents()` - Register PersonalizeVocabularyAgent
+- `SelectAgent(task)` - Choose appropriate agent for personalization task
+- `ProcessTask(task)` - Execute personalization job with selected agent
 - `GetAgent(name)` - Retrieve specific agent by name
-- `GetConversationAgent()` - Get conversation agent instance
-- `GetHistoryManager()` - Get conversation history manager
+- `CanHandle(task)` - Check if manager can handle the task
+
+**Capabilities:**
+- personalize_management
+- agent_coordination
+
+**Task Recognition:**
+The manager can handle tasks containing:
+- "personalize"
+- "vocab" 
+- "lesson"
+- "create"
 
 #### 2. ConversationAgent (`agents/conversation_agent.go`)
 Main agent handling English conversation practice.
@@ -49,7 +58,43 @@ Main agent handling English conversation practice.
 - conversation_starter
 - contextual_responses
 
-#### 3. AssessmentAgent (`agents/assessment_agent.go`)
+#### 3. PersonalizeLessonAgent (`agents/personalize_lesson_agent.go`)
+Creates personalized lesson details based on user preferences.
+
+**Responsibilities:**
+- Generate engaging lesson details
+- Create relevant emojis for topics
+- Design attractive lesson titles
+- Write motivating descriptions
+- Adapt content to proficiency levels
+- Extract metadata from JobRequest for flexible parameter handling
+
+**Key Features:**
+- Personalized lesson detail generation based on topic, level, and native language
+- Dynamic parameter extraction from JobRequest metadata
+- Emoji integration for visual appeal
+- Level-adaptive content guidelines
+- OpenRouter structured outputs with JSON schema validation
+- YAML configuration for easy customization
+- Flexible metadata-based parameter passing
+- Graceful fallback to default values
+
+**Capabilities:**
+- lesson_detail_creation
+- personalized_learning
+- lesson_design
+
+**Key Methods:**
+- `NewPersonalizeLessonAgent(client)` - Initialize agent with OpenRouter client
+- `ProcessTask(task)` - Handle personalization task
+- `generatePersonalizedLesson(task)` - Create lesson with metadata extraction
+- `extractMetadata(metadata)` - Extract topic, level, and language from metadata
+- `buildPersonalizePrompt(level)` - Build level-specific prompts
+- `buildUserPrompt(topic, level, language)` - Create user prompt with parameters
+- `buildResponseFormat()` - Configure JSON schema for structured outputs
+- `DisplayPersonalizedLesson(jsonResponse)` - Format and display lesson results
+
+#### 4. AssessmentAgent (`agents/assessment_agent.go`)
 Specialized agent for proficiency assessment and learning tips.
 
 **Responsibilities:**
@@ -86,7 +131,7 @@ Specialized agent for proficiency assessment and learning tips.
 - `GetTemperature()` - Get temperature setting
 - `GetMaxTokens()` - Get max tokens setting
 
-#### 3. ChatbotOrchestrator (`gateway/chatbot_orchestrator.go`)
+#### 4. ChatbotOrchestrator (`gateway/chatbot_orchestrator.go`)
 Terminal-based interactive conversation interface.
 
 **Responsibilities:**
@@ -112,7 +157,7 @@ Terminal-based interactive conversation interface.
 - Real-time statistics tracking
 - Integration with EvaluateAgent and SuggestionAgent
 
-#### 4. ChatbotWeb (`gateway/chatbot_web.go`)
+#### 5. ChatbotWeb (`gateway/chatbot_web.go`)
 Web-based conversation interface with full UI.
 
 **Responsibilities:**
@@ -154,7 +199,7 @@ Web-based conversation interface with full UI.
 - Evaluation display with emojis
 - On-demand suggestion hints
 
-#### 5. SuggestionAgent (`agents/suggestion_agent.go`)
+#### 6. SuggestionAgent (`agents/suggestion_agent.go`)
 Provides vocabulary suggestions and sentence starters to help learners respond.
 
 **Responsibilities:**
@@ -184,7 +229,7 @@ Provides vocabulary suggestions and sentence starters to help learners respond.
 
 **Status:** ✅ Implemented and integrated in CLI and Web
 
-#### 6. EvaluateAgent (`agents/evaluate_agent.go`)
+#### 7. EvaluateAgent (`agents/evaluate_agent.go`)
 Evaluates learner responses and provides constructive feedback.
 
 **Responsibilities:**
@@ -218,7 +263,7 @@ Evaluates learner responses and provides constructive feedback.
 
 **Status:** ✅ Implemented and integrated in CLI and Web
 
-#### 7. ConversationHistoryManager (`services/conversation_history.go`)
+#### 8. ConversationHistoryManager (`services/conversation_history.go`)
 Centralized conversation history management service.
 
 **Responsibilities:**
@@ -264,6 +309,7 @@ Centralized conversation history management service.
    - Vietnamese translation loads automatically
    - Suggestions generated and attached to history
 5. **On-Demand Suggestions** → User clicks "💡 Hint" button to fetch suggestions
+6. **Personalized Lessons** → PersonalizeManager coordinates PersonalizeLessonAgent for custom lesson details
 
 ### Conversation Starter Flow
 
@@ -324,9 +370,13 @@ Prompts are stored in YAML files under `/prompts/` directory:
 - **EvaluateAgent**: `_evaluate_prompt.yaml`
   - Base prompt and user prompt templates
   - Level-specific evaluation criteria (6 levels)
-  - Guidelines for each proficiency level
-  - Key principles for constructive feedback
-  - LLM settings (model, temperature: 0.3, max_tokens: 500)
+
+- **PersonalizeLessonAgent**: `_personalize_lesson_prompt.yaml`
+  - Base prompt and user prompt templates emphasizing careful emoji selection
+  - Level-specific guidelines for lesson detail creation (6 levels)
+  - Example emojis, titles (under 6 words), and descriptions (under 2 sentences) per level
+  - Key principles for concise, clear personalized learning
+  - LLM settings (model, temperature: 0.8, max_tokens: 200)
 
 ## Integration Points
 

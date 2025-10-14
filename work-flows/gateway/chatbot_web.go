@@ -3,6 +3,7 @@ package gateway
 import (
 	"ai-agent/utils"
 	"ai-agent/work-flows/agents"
+	"ai-agent/work-flows/client"
 	"ai-agent/work-flows/managers"
 	"ai-agent/work-flows/models"
 	"ai-agent/work-flows/services"
@@ -20,9 +21,10 @@ import (
 )
 
 type ChatbotWeb struct {
-	sessions map[string]*managers.AgentManager
-	mu       sync.Mutex
-	apiKey   string
+	conversationSessions map[string]*managers.ConversationManager
+	personalizeManager   *managers.PersonalizeManager
+	mu                   sync.Mutex
+	apiKey               string
 }
 
 type ChatMessage struct {
@@ -62,9 +64,13 @@ type PromptInfo struct {
 
 func NewChatbotWeb(apiKey string) *ChatbotWeb {
 	web := &ChatbotWeb{
-		sessions: make(map[string]*managers.AgentManager),
-		apiKey:   apiKey,
+		conversationSessions: make(map[string]*managers.ConversationManager),
+		apiKey:               apiKey,
 	}
+
+	// Initialize PersonalizeManager once and reuse
+	personalizeClient := client.NewOpenRouterClient(apiKey)
+	web.personalizeManager = managers.NewPersonalizeManager(personalizeClient)
 
 	return web
 }
@@ -78,6 +84,8 @@ func (cw *ChatbotWeb) StartWebServer(port string) {
 	http.HandleFunc("/api/translate", cw.handleTranslate)
 	http.HandleFunc("/api/suggestions", cw.handleGetSuggestions)
 	http.HandleFunc("/api/assessment", cw.handleGetAssessmentStream)
+	// Personalize
+	http.HandleFunc("/api/personalize", cw.handlePersonalize)
 	// Prompts + Topics
 	http.HandleFunc("/api/prompts", cw.handleGetPrompts)
 	http.HandleFunc("/api/topics", cw.handleGetTopics)
@@ -118,7 +126,7 @@ func (cw *ChatbotWeb) handleStream(w http.ResponseWriter, r *http.Request) {
 
 	cw.mu.Lock()
 
-	manager, exists := cw.sessions[sessionID]
+	manager, exists := cw.conversationSessions[sessionID]
 	if !exists {
 		cw.mu.Unlock()
 		http.Error(w, "Invalid session ID", http.StatusBadRequest)
@@ -220,16 +228,25 @@ func (cw *ChatbotWeb) handleStream(w http.ResponseWriter, r *http.Request) {
 			historyManager.UpdateLastMessage(models.MessageRoleAssistant, aiResponse)
 
 			// Generate suggestions for the AI message and attach to most recent AI message
-			if suggestionAgent, ok := manager.GetAgent("SuggestionAgent"); ok {
-				suggestionJob := models.JobRequest{Task: "suggestion", LastAIMessage: aiResponse}
-				suggestionResponse := suggestionAgent.ProcessTask(suggestionJob)
-				if suggestionResponse.Success {
-					var suggestion models.SuggestionResponse
-					if err := json.Unmarshal([]byte(suggestionResponse.Result), &suggestion); err == nil {
-						historyManager.UpdateLastSuggestion(&suggestion)
-					}
-				}
+			// if suggestionAgent, ok := manager.GetAgent("SuggestionAgent"); ok {
+			// 	suggestionJob := models.JobRequest{Task: "suggestion", LastAIMessage: aiResponse}
+			// 	suggestionResponse := suggestionAgent.ProcessTask(suggestionJob)
+			// 	if suggestionResponse.Success {
+			// 		var suggestion models.SuggestionResponse
+			// 		if err := json.Unmarshal([]byte(suggestionResponse.Result), &suggestion); err == nil {
+			// 			historyManager.UpdateLastSuggestion(&suggestion)
+			// 		}
+			// 	}
+			// }
+
+			// Send message completion signal
+			messageDoneData := map[string]any{
+				"done": true,
+				"type": "message",
 			}
+			messageDoneJSON, _ := json.Marshal(messageDoneData)
+			fmt.Fprintf(w, "data: %s\n\n", messageDoneJSON)
+			flusher.Flush()
 
 			// Wait for evaluation if not yet received
 			if !evaluationSent {
@@ -252,13 +269,13 @@ func (cw *ChatbotWeb) handleStream(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			// Send final done event
-			doneData := map[string]any{
+			// Send evaluation completion signal
+			evaluationDoneData := map[string]any{
 				"done": true,
-				"type": "done",
+				"type": "evaluation",
 			}
-			doneJSON, _ := json.Marshal(doneData)
-			fmt.Fprintf(w, "data: %s\n\n", doneJSON)
+			evaluationDoneJSON, _ := json.Marshal(evaluationDoneData)
+			fmt.Fprintf(w, "data: %s\n\n", evaluationDoneJSON)
 			flusher.Flush()
 			cw.mu.Unlock()
 			return
@@ -309,6 +326,61 @@ func (cw *ChatbotWeb) handleGetTopics(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handlePersonalize generates a personalized lesson detail using the PersonalizeManager
+func (cw *ChatbotWeb) handlePersonalize(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	var req struct {
+		Topic    string `json:"topic"`
+		Level    string `json:"level"`
+		Language string `json:"language"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		json.NewEncoder(w).Encode(ChatResponse{
+			Success: false,
+			Message: "Invalid request",
+		})
+		return
+	}
+
+	if req.Topic == "" || req.Level == "" || req.Language == "" {
+		json.NewEncoder(w).Encode(ChatResponse{
+			Success: false,
+			Message: "Topic, level, and language are required",
+		})
+		return
+	}
+
+	task := models.JobRequest{
+		Task: "create personalized lesson detail",
+		Metadata: map[string]any{
+			"topic":    req.Topic,
+			"level":    req.Level,
+			"language": req.Language,
+		},
+	}
+
+	resp := cw.personalizeManager.ProcessTask(task)
+	if !resp.Success {
+		json.NewEncoder(w).Encode(ChatResponse{
+			Success: false,
+			Message: resp.Error,
+		})
+		return
+	}
+
+	json.NewEncoder(w).Encode(ChatResponse{
+		Success: true,
+		Content: resp.Result,
+	})
+}
+
 func (cw *ChatbotWeb) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -353,13 +425,13 @@ func (cw *ChatbotWeb) handleCreateSession(w http.ResponseWriter, r *http.Request
 	if req.SessionID != "" {
 		sessionID = req.SessionID
 		// If session exists, remove it to create a new one
-		delete(cw.sessions, sessionID)
+		delete(cw.conversationSessions, sessionID)
 	} else {
 		sessionID = fmt.Sprintf("web_%d", utils.GetCurrentTimestamp())
 	}
 
-	manager := managers.NewManager(cw.apiKey, level, req.Topic, userLanguage, sessionID)
-	cw.sessions[sessionID] = manager
+	manager := managers.NewConversationManager(cw.apiKey, level, req.Topic, userLanguage, sessionID)
+	cw.conversationSessions[sessionID] = manager
 	cw.mu.Unlock()
 
 	conversationJob := models.JobRequest{
@@ -525,7 +597,7 @@ func (cw *ChatbotWeb) handleSavePrompt(w http.ResponseWriter, r *http.Request) {
 
 	shouldReset := false
 	cw.mu.Lock()
-	for _, manager := range cw.sessions {
+	for _, manager := range cw.conversationSessions {
 		conversationAgent := manager.GetConversationAgent()
 		if conversationAgent.Topic == req.Topic {
 			shouldReset = true
@@ -812,7 +884,7 @@ func (cw *ChatbotWeb) handleGetSuggestions(w http.ResponseWriter, r *http.Reques
 	cw.mu.Lock()
 	defer cw.mu.Unlock()
 
-	manager, exists := cw.sessions[req.SessionID]
+	manager, exists := cw.conversationSessions[req.SessionID]
 	if !exists {
 		json.NewEncoder(w).Encode(ChatResponse{
 			Success: false,
@@ -885,7 +957,7 @@ func (cw *ChatbotWeb) handleGetAssessmentStream(w http.ResponseWriter, r *http.R
 	cw.mu.Lock()
 	defer cw.mu.Unlock()
 
-	manager, exists := cw.sessions[sessionID]
+	manager, exists := cw.conversationSessions[sessionID]
 	if !exists {
 		http.Error(w, "Invalid session ID", http.StatusBadRequest)
 		return
@@ -1094,7 +1166,7 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
         }
         
         .prompt-list {
-            max-height: 200px;
+            max-height: 420px;
             overflow-y: auto;
             border: 1px solid #e0e0e0;
             border-radius: 8px;
@@ -1168,6 +1240,72 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
             align-items: center;
         }
         
+        .nav-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .nav-tabs {
+            display: flex;
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 4px;
+            gap: 2px;
+        }
+        
+        .nav-tab {
+            padding: 10px 20px;
+            background: transparent;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            color: #666;
+            transition: all 0.2s;
+        }
+        
+        .nav-tab.active {
+            background: white;
+            color: #333;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .nav-tab:hover:not(.active) {
+            background: rgba(255,255,255,0.5);
+            color: #333;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0; /* allow inner flex child to scroll */
+        }
+        
+        .btn-nav {
+            padding: 10px 16px;
+            background: #ffffff;
+            border: 2px solid #e0e0e0;
+            color: #333;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        
+        .btn-nav:hover {
+            border-color: #667eea;
+            color: #667eea;
+            background: #f8f9ff;
+        }
+        
         .chat-title {
             font-size: 18px;
             font-weight: 600;
@@ -1220,6 +1358,28 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
             background: white;
             color: #333;
             border: 1px solid #e0e0e0;
+            position: relative;
+        }
+        
+        .audio-button {
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-size: 12px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.2s;
+            opacity: 0.8;
+            margin-top: 8px;
+        }
+        
+        .audio-button:hover {
+            opacity: 1;
+            transform: scale(1.1);
         }
         
         .message.user .message-content {
@@ -1531,6 +1691,16 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
             font-weight: 600;
         }
         
+        .btn-outline {
+            padding: 10px 20px;
+            background: white;
+            color: #333;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        
         .prompt-editor {
             width: 100%;
             min-height: 400px;
@@ -1738,14 +1908,55 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
                 <div class="chat-title" id="chatTitle">English Conversation</div>
                 <div class="chat-info" id="chatInfo">Select topic and level to begin</div>
             </div>
+            <div class="nav-actions">
+                <div class="nav-tabs">
+                    <button id="conversationTab" class="nav-tab active" onclick="switchTab('conversation')">💬 Conversation</button>
+                    <button id="personalizeTab" class="nav-tab" onclick="switchTab('personalize')">✨ Personalize</button>
+                </div>
+            </div>
         </div>
-        <div class="chat-messages" id="chatMessages"></div>
-        <div class="chat-input-container">
-            <div class="chat-input-wrapper">
-                <textarea id="chatInput" class="chat-input" placeholder="Type your message..." rows="1"></textarea>
-                <button id="hintBtn" class="btn-hint" disabled>💡 Hint</button>
-                <button id="assessmentBtn" class="btn-assessment" disabled>📊 End Conversation</button>
-                <button id="sendBtn" class="btn-send" disabled>Send</button>
+        <div id="conversationContent" class="tab-content active">
+            <div class="chat-messages" id="chatMessages"></div>
+            <div class="chat-input-container">
+                <div class="chat-input-wrapper">
+                    <textarea id="chatInput" class="chat-input" placeholder="Type your message..." rows="1"></textarea>
+                    <button id="hintBtn" class="btn-hint" disabled>💡 Hint</button>
+                    <button id="assessmentBtn" class="btn-assessment" disabled>📊 End Conversation</button>
+                    <button id="sendBtn" class="btn-send" disabled>Send</button>
+                </div>
+            </div>
+        </div>
+        
+        <div id="personalizeContent" class="tab-content">
+            <div class="sidebar-content" style="padding: 20px;">
+                <div class="section">
+                    <div class="section-title">Topic</div>
+                    <input id="personalizeTopic" class="input-topic-name" placeholder="Enter topic (e.g., travel, music)" />
+                </div>
+                <div class="section">
+                    <div class="section-title">Level</div>
+                    <select id="personalizeLevel" class="form-select">
+                        <option value="beginner">Beginner</option>
+                        <option value="elementary">Elementary</option>
+                        <option value="intermediate" selected>Intermediate</option>
+                        <option value="upper_intermediate">Upper Intermediate</option>
+                        <option value="advanced">Advanced</option>
+                        <option value="fluent">Fluent</option>
+                    </select>
+                </div>
+                <div class="section">
+                    <div class="section-title">Native Language</div>
+                    <input id="personalizeLanguage" class="input-topic-name" placeholder="Enter native language (e.g., Vietnamese)" />
+                </div>
+                <div id="personalizeError" class="yaml-error"></div>
+                <div id="personalizeLoading" class="translation-loading" style="display:none; margin-top: 10px;">⏳ Generating personalized lesson...</div>
+                <div class="section">
+                    <div class="section-title">Result</div>
+                    <div id="personalizeResult" style="background:#f9fafb; padding:12px; border-radius:8px; overflow:auto; max-height:50vh; font-size:14px; line-height:1.6;"></div>
+                </div>
+                <div style="margin-top: 20px;">
+                    <button id="personalizeGenerateBtn" class="btn-primary" onclick="submitPersonalize()" style="width: 100%;">Generate Personalized Lesson</button>
+                </div>
             </div>
         </div>
     </div>
@@ -1769,6 +1980,7 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
             </div>
         </div>
     </div>
+    
     
     <div id="assessmentModal" class="modal">
         <div class="modal-content">
@@ -1895,6 +2107,98 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
             document.getElementById('promptModal').classList.remove('active');
             if (yamlValidationTimeout) {
                 clearTimeout(yamlValidationTimeout);
+            }
+        }
+
+        function switchTab(tabName) {
+            // Update tab buttons
+            document.querySelectorAll('.nav-tab').forEach(tab => tab.classList.remove('active'));
+            document.getElementById(tabName + 'Tab').classList.add('active');
+            
+            // Update tab content
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById(tabName + 'Content').classList.add('active');
+            
+            // Reset personalize form when switching to personalize tab
+            if (tabName === 'personalize') {
+                document.getElementById('personalizeTopic').value = '';
+                document.getElementById('personalizeLevel').value = currentLevel || 'intermediate';
+                document.getElementById('personalizeLanguage').value = 'Vietnamese';
+                document.getElementById('personalizeError').classList.remove('active');
+                document.getElementById('personalizeError').textContent = '';
+                document.getElementById('personalizeLoading').style.display = 'none';
+                document.getElementById('personalizeResult').textContent = '';
+                // Hide sidebar in personalize tab
+                const sidebar = document.querySelector('.sidebar');
+                if (sidebar) sidebar.style.display = 'none';
+            } else if (tabName === 'conversation') {
+                // Show sidebar in conversation tab
+                const sidebar = document.querySelector('.sidebar');
+                if (sidebar) sidebar.style.display = '';
+                // Ensure messages area fills and scrolls, and focus input at bottom
+                setTimeout(() => {
+                    scrollToBottom();
+                    document.getElementById('chatInput').focus();
+                }, 0);
+            }
+        }
+
+        async function submitPersonalize() {
+            const topic = document.getElementById('personalizeTopic').value.trim();
+            const level = document.getElementById('personalizeLevel').value;
+            const language = document.getElementById('personalizeLanguage').value.trim() || 'Vietnamese';
+            const errorDiv = document.getElementById('personalizeError');
+            const loadingDiv = document.getElementById('personalizeLoading');
+            const resultDiv = document.getElementById('personalizeResult');
+            const generateBtn = document.getElementById('personalizeGenerateBtn');
+
+            if (!topic) {
+                errorDiv.textContent = 'Please enter a topic';
+                errorDiv.classList.add('active');
+                return;
+            }
+
+            try {
+                loadingDiv.style.display = 'block';
+                errorDiv.classList.remove('active');
+                errorDiv.textContent = '';
+                resultDiv.textContent = '';
+                if (generateBtn) { generateBtn.disabled = true; generateBtn.textContent = '⏳ Generating...'; }
+                const response = await fetch('/api/personalize', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ topic, level, language })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    // Pretty-print JSON result (handle optional code fences)
+                    let raw = (data.content || '').trim();
+                    const bt = String.fromCharCode(96); // backtick
+                    const fence = bt + bt + bt;
+                    if (raw.startsWith(fence + 'json')) raw = raw.slice(fence.length + 4);
+                    if (raw.startsWith(fence)) raw = raw.slice(fence.length);
+                    if (raw.endsWith(fence)) raw = raw.slice(0, -fence.length);
+                    raw = raw.trim();
+                    try {
+                        const obj = JSON.parse(raw);
+                        // Create formatted JSON with syntax highlighting
+                        resultDiv.innerHTML = '<pre style="background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 8px; border: 1px solid #333; font-family: \'Courier New\', monospace; font-size: 13px; line-height: 1.5; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;">' + 
+                            formatJSON(obj) + '</pre>';
+                    } catch (_) {
+                        // Fallback to raw text if parse fails
+                        resultDiv.innerHTML = '<pre style="background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 8px; border: 1px solid #333; font-family: \'Courier New\', monospace; font-size: 13px; line-height: 1.5; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;">' + 
+                            escapeHtml(raw || data.content) + '</pre>';
+                    }
+                } else {
+                    errorDiv.textContent = data.message || 'Failed to generate personalized lesson';
+                    errorDiv.classList.add('active');
+                }
+            } catch (e) {
+                errorDiv.textContent = 'Network error: ' + e.message;
+                errorDiv.classList.add('active');
+            } finally {
+                loadingDiv.style.display = 'none';
+                if (generateBtn) { generateBtn.disabled = false; generateBtn.textContent = 'Generate Personalized Lesson'; }
             }
         }
 
@@ -2114,6 +2418,7 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
             const input = document.getElementById('chatInput');
             const message = input.value.trim();
             input.value = '';
+            input.focus();
             
             if (!message || !sessionActive || isSending) return;
             
@@ -2142,17 +2447,23 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
                     const data = JSON.parse(event.data);
                     console.log('SSE Event received:', data.type, data);
                     
-                    if (data.done) {
+                    if (data.done && data.type === 'message') {
+                        // Message streaming is complete, trigger translation and Google Translate
+                        if (translationDiv && contentDiv && contentDiv.textContent) {
+                            translateMessage(contentDiv.textContent, translationDiv);
+                            // Use Google Translate to read the English text
+                            readWithGoogleTranslate(contentDiv.textContent);
+                        }
+                        // Add audio button to the completed message
+                        addAudioButtonToLastMessage();
+                    } else if (data.done && data.type === 'evaluation') {
+                        // Stream is completely finished
                         eventSource.close();
                         sendBtn.disabled = false;
                         sendBtn.textContent = 'Send';
                         isSending = false;
                         document.getElementById('chatInput').focus();
-                        
-                        if (translationDiv && contentDiv && contentDiv.textContent) {
-                            translateMessage(contentDiv.textContent, translationDiv);
-                        }
-                    } else if (data.type === 'evaluation') {
+                    } else if (data.type === 'evaluation' && !data.done) {
                         console.log('Evaluation received:', data.data);
                         console.log('User message div:', userMessageDiv);
                         const evaluationDiv = document.createElement('div');
@@ -2266,6 +2577,18 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
             
             messageDiv.appendChild(contentDiv);
             
+            // Add audio button below content for assistant messages
+            if (role === 'assistant' && content) {
+                const audioButton = document.createElement('button');
+                audioButton.className = 'audio-button';
+                audioButton.innerHTML = '🔊 Play Audio';
+                audioButton.title = 'Play audio';
+                audioButton.onclick = function() {
+                    readWithGoogleTranslate(content);
+                };
+                messageDiv.appendChild(audioButton);
+            }
+            
             let translationDiv = null;
             if (role === 'assistant') {
                 translationDiv = document.createElement('div');
@@ -2287,6 +2610,36 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
         function scrollToBottom() {
             const messagesDiv = document.getElementById('chatMessages');
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function addAudioButtonToLastMessage() {
+            const messagesDiv = document.getElementById('chatMessages');
+            const assistantMessages = messagesDiv.querySelectorAll('.message.assistant');
+            if (assistantMessages.length === 0) return;
+            
+            const lastMessage = assistantMessages[assistantMessages.length - 1];
+            const contentDiv = lastMessage.querySelector('.message-content');
+            if (!contentDiv || !contentDiv.textContent) return;
+            
+            // Check if audio button already exists
+            if (lastMessage.querySelector('.audio-button')) return;
+            
+            const content = contentDiv.textContent;
+            const audioButton = document.createElement('button');
+            audioButton.className = 'audio-button';
+            audioButton.innerHTML = '🔊 Play Audio';
+            audioButton.title = 'Play audio';
+            audioButton.onclick = function() {
+                readWithGoogleTranslate(content);
+            };
+            
+            // Insert before translation div if it exists, otherwise just append
+            const translationDiv = lastMessage.querySelector('.message-translation');
+            if (translationDiv) {
+                lastMessage.insertBefore(audioButton, translationDiv);
+            } else {
+                lastMessage.appendChild(audioButton);
+            }
         }
 
         function useSuggestion(text) {
@@ -2497,8 +2850,89 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
             return div.innerHTML;
         }
 
+        function formatJSON(obj, indent = 0) {
+            const spaces = '  '.repeat(indent);
+            if (obj === null) return '<span style="color: #608b4e;">null</span>';
+            if (typeof obj === 'string') return '<span style="color: #ce9178;">"' + escapeHtml(obj) + '"</span>';
+            if (typeof obj === 'number') return '<span style="color: #b5cea8;">' + obj + '</span>';
+            if (typeof obj === 'boolean') return '<span style="color: #569cd6;">' + obj + '</span>';
+            
+            if (Array.isArray(obj)) {
+                if (obj.length === 0) return '[]';
+                let result = '[\n';
+                obj.forEach((item, index) => {
+                    result += spaces + '  ' + formatJSON(item, indent + 1);
+                    if (index < obj.length - 1) result += ',';
+                    result += '\n';
+                });
+                result += spaces + ']';
+                return result;
+            }
+            
+            if (typeof obj === 'object') {
+                const keys = Object.keys(obj);
+                if (keys.length === 0) return '{}';
+                let result = '{\n';
+                keys.forEach((key, index) => {
+                    result += spaces + '  <span style="color: #9cdcfe;">"' + escapeHtml(key) + '"</span>: ' + formatJSON(obj[key], indent + 1);
+                    if (index < keys.length - 1) result += ',';
+                    result += '\n';
+                });
+                result += spaces + '}';
+                return result;
+            }
+            
+            return escapeHtml(String(obj));
+        }
+
         function closeAssessmentModal() {
             document.getElementById('assessmentModal').classList.remove('active');
+        }
+
+        function readWithGoogleTranslate(text) {
+            if (!text || text.trim() === '') return;
+            
+            // Try Web Speech API first (more reliable)
+            if ('speechSynthesis' in window) {
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'en-US';
+                utterance.rate = 1;
+                utterance.pitch = 1;
+                speechSynthesis.speak(utterance);
+                return;
+            }
+            
+            // Fallback: Create audio element with Google TTS
+            const audio = document.createElement('audio');
+            audio.style.display = 'none';
+            
+            const encodedText = encodeURIComponent(text);
+            const ttsUrl = "https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&q=" + encodedText + "&tl=en";
+            
+            audio.src = ttsUrl;
+            audio.autoplay = true;
+            audio.onloadstart = function() {
+                document.body.appendChild(audio);
+            };
+            audio.onended = function() {
+                if (audio.parentNode) {
+                    audio.parentNode.removeChild(audio);
+                }
+            };
+            audio.onerror = function() {
+                if (audio.parentNode) {
+                    audio.parentNode.removeChild(audio);
+                }
+                console.log('Audio playback failed');
+            };
+            
+            // Try to play
+            audio.play().catch(function(error) {
+                console.log('Audio play failed:', error);
+                if (audio.parentNode) {
+                    audio.parentNode.removeChild(audio);
+                }
+            });
         }
 
         init();
