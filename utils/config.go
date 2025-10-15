@@ -8,19 +8,24 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-var conversationPromptMemCache = make(map[string]PromptConfig)
+var conversationPromptMemCache = make(map[string]ConversationPromptConfig)
 var suggestionPromptMemCache *SuggestionPromptConfig
 var evaluatePromptMemCache *EvaluatePromptConfig
 var assessmentPromptMemCache *AssessmentPromptConfig
 var personalizeVocabPromptMemCache *PersonalizeVocabPromptConfig
 var personalizeLessonPromptMemCache *PersonalizeLessonPromptConfig
 
-type PromptConfig struct {
-	ConversationLevels map[string]LevelConfig `yaml:"conversation_levels"`
+type ConversationPromptConfig struct {
+	Information InformationConfig      `yaml:"information"`
+	Levels      map[string]LevelConfig `yaml:"levels"`
+}
+
+type InformationConfig struct {
+	Title string `yaml:"title"`
 }
 
 type SuggestionPromptConfig struct {
-	SuggestionAgent SuggestionAgentConfig `yaml:"suggestion_agent"`
+	SuggestionAgent SuggestionAgentConfig `yaml:"config"`
 }
 
 type SuggestionAgentConfig struct {
@@ -45,11 +50,11 @@ type VocabOptionExample struct {
 }
 
 type EvaluatePromptConfig struct {
-	EvaluateAgent EvaluateAgentConfig `yaml:"evaluate_agent"`
+	EvaluateAgent EvaluateAgentConfig `yaml:"config"`
 }
 
 type AssessmentPromptConfig struct {
-	AssessmentAgent AssessmentAgentConfig `yaml:"assessment_agent"`
+	AssessmentAgent AssessmentAgentConfig `yaml:"config"`
 }
 
 type EvaluateAgentConfig struct {
@@ -101,7 +106,7 @@ type PersonalizeVocabLevelConfig struct {
 }
 
 type PersonalizeLessonPromptConfig struct {
-	PersonalizeLessonAgent PersonalizeLessonAgentConfig `yaml:"personalize_lesson_agent"`
+	PersonalizeLessonAgent PersonalizeLessonAgentConfig `yaml:"config"`
 }
 
 type PersonalizeLessonAgentConfig struct {
@@ -135,7 +140,13 @@ type LevelConfig struct {
 	LLM            LLMSettings `yaml:"llm"`
 }
 
-func loadPromptsConfig(path string) (*PromptConfig, error) {
+func LoadConversationPromptConfig(path string) (*ConversationPromptConfig, error) {
+
+	if _, exists := conversationPromptMemCache[path]; exists {
+		promptConfig := conversationPromptMemCache[path]
+		return &promptConfig, nil
+	}
+
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return nil, fmt.Errorf("config file not found: %s", path)
 	}
@@ -145,24 +156,26 @@ func loadPromptsConfig(path string) (*PromptConfig, error) {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	var config PromptConfig
+	var config ConversationPromptConfig
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse YAML config: %w", err)
 	}
+
+	conversationPromptMemCache[path] = config
 
 	return &config, nil
 }
 
 func GetFullPrompt(path string, level string, promptType string) (string, string, string, error) {
 	if _, exists := conversationPromptMemCache[path]; !exists {
-		prompts, err := loadPromptsConfig(path)
+		prompts, err := LoadConversationPromptConfig(path)
 		if err != nil {
 			return "", "", "", fmt.Errorf("failed to load prompts config: %w", err)
 		}
 		conversationPromptMemCache[path] = *prompts
 	}
 
-	levelConfig, exists := conversationPromptMemCache[path].ConversationLevels[level]
+	levelConfig, exists := conversationPromptMemCache[path].Levels[level]
 	if !exists {
 		return "", "", "", fmt.Errorf("conversation level '%s' not found", level)
 	}
@@ -185,15 +198,12 @@ func GetFullPrompt(path string, level string, promptType string) (string, string
 }
 
 func GetLLMSettingsFromLevel(path string, level string) (string, float64, int) {
-	if _, exists := conversationPromptMemCache[path]; !exists {
-		prompts, err := loadPromptsConfig(path)
-		if err != nil {
-			return "openai/gpt-4o-mini", 0.7, 1000
-		}
-		conversationPromptMemCache[path] = *prompts
+	prompts, err := LoadConversationPromptConfig(path)
+	if err != nil {
+		return "openai/gpt-4o-mini", 0.7, 1000
 	}
 
-	levelConfig, exists := conversationPromptMemCache[path].ConversationLevels[level]
+	levelConfig, exists := prompts.Levels[level]
 	if !exists {
 		return "openai/gpt-4o-mini", 0.7, 1000
 	}
@@ -296,7 +306,7 @@ func LoadAssessmentConfig() (*AssessmentPromptConfig, error) {
 }
 
 func ClearConversationPromptCache() {
-	conversationPromptMemCache = make(map[string]PromptConfig)
+	conversationPromptMemCache = make(map[string]ConversationPromptConfig)
 }
 
 func ClearSuggestionPromptCache() {

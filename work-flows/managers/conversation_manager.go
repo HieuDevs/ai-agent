@@ -37,8 +37,13 @@ func NewConversationManager(apiKey string, level models.ConversationLevel, topic
 
 func (m *ConversationManager) RegisterAgents(level models.ConversationLevel, topic string, language string) {
 	conversationAgent := agents.NewConversationAgent(m.apiClient, level, topic, m.historyManager)
-	suggestionAgent := agents.NewSuggestionAgent(m.apiClient, level, topic, language)
-	evaluateAgent := agents.NewEvaluateAgent(m.apiClient, level, topic, language)
+	// Get title from conversation agent
+	title := conversationAgent.GetTitle()
+	if title == "" {
+		title = topic
+	}
+	suggestionAgent := agents.NewSuggestionAgent(m.apiClient, level, title, language)
+	evaluateAgent := agents.NewEvaluateAgent(m.apiClient, level, title, language)
 	assessmentAgent := agents.NewAssessmentAgent(m.apiClient, language)
 
 	m.agents[conversationAgent.Name()] = conversationAgent

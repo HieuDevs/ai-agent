@@ -1,4 +1,4 @@
-personalize_lesson_agent:
+config:
   
   llm:
     model: "openai/gpt-4o-mini"

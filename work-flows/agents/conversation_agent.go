@@ -270,3 +270,15 @@ func (ca *ConversationAgent) getStreamingResponse(
 		}
 	}
 }
+
+func (ca *ConversationAgent) GetTitle() string {
+	// Load title from prompt
+	pathPrompts := filepath.Join(utils.GetPromptsDir(), ca.Topic+"_prompt.yaml")
+	promptConfig, err := utils.LoadConversationPromptConfig(pathPrompts)
+	if err != nil {
+		utils.PrintError(fmt.Sprintf("Error loading prompt for level %s, type %s: %v", ca.level, "information", err))
+		return ""
+	}
+	title := promptConfig.Information.Title
+	return title
+}
