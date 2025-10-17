@@ -161,6 +161,7 @@ type AssessmentStreamResponse struct {
 }
 
 type PersonalizeVocabItem struct {
+	Emoji           string `json:"emoji"`            // Relevant emoji for the vocabulary word
 	Vocab           string `json:"vocab"`            // English vocabulary word
 	Meaning         string `json:"meaning"`          // Meaning in native language
 	Sentence        string `json:"sentence"`         // Example sentence with vocab highlighted in <b>...</b>

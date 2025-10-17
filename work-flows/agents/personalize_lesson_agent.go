@@ -230,6 +230,7 @@ Generate:
 4. 4 essential vocabulary words related to this topic and level
 
 For each vocabulary word, provide:
+- ONE clear emoji that best represents the vocabulary word (be selective and precise)
 - The English word
 - Its meaning in %s
 - An English sentence using the word in context related to the topic, with the word highlighted between <b>...</b>
@@ -256,27 +257,29 @@ Your role is to generate clear, concise lesson details based on user preferences
 - Create 4 essential vocabulary words related to the topic and appropriate for the learner's level
 
 For each vocabulary word:
+- Choose ONE clear emoji that best represents the vocabulary word (be selective and precise)
 - Choose English words that are essential for understanding the topic
 - Format the vocabulary word as "word (type)" where type is n. = noun, v. = verb, adj. = adjective, adv. = adverb
 - Provide a very short meaning in the learner's native language (2-4 words max)
 - Create an English sentence that uses the word in context related to the topic
 - Highlight the vocabulary word between <b>...</b> tags in the sentence
- - Provide the sentence's meaning translated into the learner's native language
+- Provide the sentence's meaning translated into the learner's native language
 
 Be careful with emoji selection - choose the most obvious and universally understood emoji for the topic.
 Keep everything simple, clear, and practical for language learners.
 
 Key principles:
-- Be careful and precise with emoji selection - choose the most obvious one
+- Be careful and precise with emoji selection - choose the most obvious one for both topic and vocabulary words
 - Keep titles short, clear, and easy to understand (under 6 words)
 - Write concise descriptions (under 2 sentences) in the learner's native language
 - Choose vocabulary words appropriate for the learner's level
+- For each vocabulary word, choose ONE clear emoji that best represents the word
 - Format vocabulary words as "word (type)" where type is n./v./adj./adv.
 - Meanings must be very short (2-4 words max)
 - Create sentences that clearly show how the word is used in context
 - Focus on practical benefits and real-world application
 - Make everything simple and clear for language learners
-- Choose universally understood emojis that clearly represent the topic`
+- Choose universally understood emojis that clearly represent both topic and vocabulary words`
 }
 
 func (pla *PersonalizeLessonAgent) buildResponseFormat() *models.ResponseFormat {
@@ -300,6 +303,10 @@ func (pla *PersonalizeLessonAgent) buildResponseFormat() *models.ResponseFormat 
 				"items": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
+						"emoji": map[string]any{
+							"type":        "string",
+							"description": "ONE clear emoji that best represents the vocabulary word (be selective and precise)",
+						},
 						"vocab": map[string]any{
 							"type":        "string",
 							"description": "English vocabulary word formatted as 'word (type)' where type is n. = noun, v. = verb, adj. = adjective, adv. = adverb",
@@ -317,7 +324,7 @@ func (pla *PersonalizeLessonAgent) buildResponseFormat() *models.ResponseFormat 
 							"description": "Translation of the example sentence in the learner's native language",
 						},
 					},
-					"required":             []string{"vocab", "meaning", "sentence", "sentence_meaning"},
+					"required":             []string{"emoji", "vocab", "meaning", "sentence", "sentence_meaning"},
 					"additionalProperties": false,
 				},
 				"minItems":    4,
@@ -374,7 +381,7 @@ func (pla *PersonalizeLessonAgent) DisplayPersonalizedLesson(jsonResponse string
 	if len(lesson.Vocabulary) > 0 {
 		fmt.Println("📚 Essential Vocabulary:")
 		for i, vocab := range lesson.Vocabulary {
-			fmt.Printf("%d. <b>%s</b> - %s\n", i+1, vocab.Vocab, vocab.Meaning)
+			fmt.Printf("%d. %s <b>%s</b> - %s\n", i+1, vocab.Emoji, vocab.Vocab, vocab.Meaning)
 			fmt.Printf("   %s\n", vocab.Sentence)
 			if vocab.SentenceMeaning != "" {
 				fmt.Printf("   → %s\n", vocab.SentenceMeaning)
