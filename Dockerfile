@@ -21,6 +21,7 @@ WORKDIR /app
 COPY --from=builder /build/ai-agent .
 COPY --from=builder /build/.env .
 COPY --from=builder /build/prompts ./prompts
+COPY --from=builder /build/data.json ./data.json
 
 EXPOSE 8080
 

@@ -62,6 +62,36 @@ type PromptInfo struct {
 	Content string `json:"content,omitzero"`
 }
 
+type Lesson struct {
+	Index         int    `json:"index"`
+	Title         string `json:"title"`
+	Prompt        string `json:"prompt"`
+	Type          string `json:"type"`
+	CharacterName string `json:"character_name"`
+	Description   string `json:"description"`
+	IsLocked      bool   `json:"is_locked"`
+	Turns         int    `json:"turns"`
+	CreatedAt     string `json:"created_at"`
+	UpdatedAt     string `json:"updated_at"`
+}
+
+type Chapter struct {
+	ID          string   `json:"id"`
+	Title       string   `json:"title"`
+	Description string   `json:"description"`
+	Lessons     []Lesson `json:"lessons"`
+	IsLocked    bool     `json:"is_locked"`
+	Order       int      `json:"order"`
+	CreatedAt   string   `json:"created_at"`
+	UpdatedAt   string   `json:"updated_at"`
+}
+
+type LessonsResponse struct {
+	Success  bool      `json:"success"`
+	Chapters []Chapter `json:"chapters,omitzero"`
+	Message  string    `json:"message,omitzero"`
+}
+
 func NewChatbotWeb(apiKey string) *ChatbotWeb {
 	web := &ChatbotWeb{
 		conversationSessions: make(map[string]*managers.ConversationManager),
@@ -93,6 +123,13 @@ func (cw *ChatbotWeb) StartWebServer(port string) {
 	http.HandleFunc("/api/prompt/save", cw.handleSavePrompt)
 	http.HandleFunc("/api/prompt/create", cw.handleCreatePrompt)
 	http.HandleFunc("/api/prompt/delete", cw.handleDeletePrompt)
+	// Lessons
+	http.HandleFunc("/api/lessons", cw.handleGetLessons)
+	http.HandleFunc("/api/chapter/create", cw.handleCreateChapter)
+	http.HandleFunc("/api/chapter/update", cw.handleUpdateChapter)
+	http.HandleFunc("/api/chapter/delete", cw.handleDeleteChapter)
+	http.HandleFunc("/api/lesson/create", cw.handleCreateLesson)
+	http.HandleFunc("/api/lesson/update", cw.handleUpdateLesson)
 
 	addr := ":" + port
 	fmt.Printf("🌐 Web server starting at http://localhost%s\n", addr)
@@ -928,6 +965,542 @@ func (cw *ChatbotWeb) handleGetSuggestions(w http.ResponseWriter, r *http.Reques
 	json.NewEncoder(w).Encode(ChatResponse{
 		Success:     true,
 		Suggestions: suggestionsMap,
+	})
+}
+
+func (cw *ChatbotWeb) handleGetLessons(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Read data from data.json file
+	data, err := os.ReadFile("data.json")
+	if err != nil {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Failed to read data file: " + err.Error(),
+		})
+		return
+	}
+
+	// Parse JSON data
+	var response LessonsResponse
+	if err := json.Unmarshal(data, &response); err != nil {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Failed to parse data file: " + err.Error(),
+		})
+		return
+	}
+
+	// Return the parsed data
+	json.NewEncoder(w).Encode(response)
+}
+
+func (cw *ChatbotWeb) handleCreateChapter(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	var req struct {
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		Order       int    `json:"order"`
+		IsLocked    bool   `json:"is_locked"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Invalid request",
+		})
+		return
+	}
+
+	if req.Title == "" {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Title is required",
+		})
+		return
+	}
+
+	// Read current data
+	data, err := os.ReadFile("data.json")
+	if err != nil {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Failed to read data file: " + err.Error(),
+		})
+		return
+	}
+
+	var response LessonsResponse
+	if err := json.Unmarshal(data, &response); err != nil {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Failed to parse data file: " + err.Error(),
+		})
+		return
+	}
+
+	// Create new chapter
+	newChapter := Chapter{
+		ID:          fmt.Sprintf("chapter_%d", len(response.Chapters)+1),
+		Title:       req.Title,
+		Description: req.Description,
+		Lessons:     []Lesson{},
+		IsLocked:    req.IsLocked,
+		Order:       req.Order,
+		CreatedAt:   utils.GetCurrentTimestampString(),
+		UpdatedAt:   utils.GetCurrentTimestampString(),
+	}
+
+	response.Chapters = append(response.Chapters, newChapter)
+
+	// Save updated data
+	updatedData, err := json.MarshalIndent(response, "", "  ")
+	if err != nil {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Failed to serialize data: " + err.Error(),
+		})
+		return
+	}
+
+	if err := os.WriteFile("data.json", updatedData, 0644); err != nil {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Failed to save data file: " + err.Error(),
+		})
+		return
+	}
+
+	json.NewEncoder(w).Encode(LessonsResponse{
+		Success: true,
+		Message: "Chapter created successfully",
+	})
+}
+
+func (cw *ChatbotWeb) handleUpdateChapter(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	var req struct {
+		ChapterID   string `json:"chapter_id"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		Order       int    `json:"order"`
+		IsLocked    bool   `json:"is_locked"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Invalid request",
+		})
+		return
+	}
+
+	if req.ChapterID == "" || req.Title == "" {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Chapter ID and title are required",
+		})
+		return
+	}
+
+	// Read current data
+	data, err := os.ReadFile("data.json")
+	if err != nil {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Failed to read data file: " + err.Error(),
+		})
+		return
+	}
+
+	var response LessonsResponse
+	if err := json.Unmarshal(data, &response); err != nil {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Failed to parse data file: " + err.Error(),
+		})
+		return
+	}
+
+	// Find and update the chapter
+	found := false
+	for i := range response.Chapters {
+		if response.Chapters[i].ID == req.ChapterID {
+			response.Chapters[i].Title = req.Title
+			response.Chapters[i].Description = req.Description
+			response.Chapters[i].Order = req.Order
+			response.Chapters[i].IsLocked = req.IsLocked
+			response.Chapters[i].UpdatedAt = utils.GetCurrentTimestampString()
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Chapter not found",
+		})
+		return
+	}
+
+	// Save updated data
+	updatedData, err := json.MarshalIndent(response, "", "  ")
+	if err != nil {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Failed to serialize data: " + err.Error(),
+		})
+		return
+	}
+
+	if err := os.WriteFile("data.json", updatedData, 0644); err != nil {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Failed to save data file: " + err.Error(),
+		})
+		return
+	}
+
+	json.NewEncoder(w).Encode(LessonsResponse{
+		Success: true,
+		Message: "Chapter updated successfully",
+	})
+}
+
+func (cw *ChatbotWeb) handleDeleteChapter(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	var req struct {
+		ChapterID string `json:"chapter_id"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Invalid request",
+		})
+		return
+	}
+
+	if req.ChapterID == "" {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Chapter ID is required",
+		})
+		return
+	}
+
+	// Read current data
+	data, err := os.ReadFile("data.json")
+	if err != nil {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Failed to read data file: " + err.Error(),
+		})
+		return
+	}
+
+	var response LessonsResponse
+	if err := json.Unmarshal(data, &response); err != nil {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Failed to parse data file: " + err.Error(),
+		})
+		return
+	}
+
+	// Find and remove the chapter
+	var updatedChapters []Chapter
+	found := false
+	for _, chapter := range response.Chapters {
+		if chapter.ID != req.ChapterID {
+			updatedChapters = append(updatedChapters, chapter)
+		} else {
+			found = true
+		}
+	}
+
+	if !found {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Chapter not found",
+		})
+		return
+	}
+
+	response.Chapters = updatedChapters
+
+	// Save updated data
+	updatedData, err := json.MarshalIndent(response, "", "  ")
+	if err != nil {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Failed to serialize data: " + err.Error(),
+		})
+		return
+	}
+
+	if err := os.WriteFile("data.json", updatedData, 0644); err != nil {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Failed to save data file: " + err.Error(),
+		})
+		return
+	}
+
+	json.NewEncoder(w).Encode(LessonsResponse{
+		Success: true,
+		Message: "Chapter deleted successfully",
+	})
+}
+
+func (cw *ChatbotWeb) handleCreateLesson(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	var req struct {
+		ChapterID     string `json:"chapter_id"`
+		Title         string `json:"title"`
+		CharacterName string `json:"character_name"`
+		Prompt        string `json:"prompt"`
+		Description   string `json:"description"`
+		Turns         int    `json:"turns"`
+		Type          string `json:"type"`
+		IsLocked      bool   `json:"is_locked"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Invalid request",
+		})
+		return
+	}
+
+	if req.Title == "" || req.CharacterName == "" || req.Prompt == "" {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Title, character name, and prompt are required",
+		})
+		return
+	}
+
+	// Read current data
+	data, err := os.ReadFile("data.json")
+	if err != nil {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Failed to read data file: " + err.Error(),
+		})
+		return
+	}
+
+	var response LessonsResponse
+	if err := json.Unmarshal(data, &response); err != nil {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Failed to parse data file: " + err.Error(),
+		})
+		return
+	}
+
+	// Find the chapter
+	var targetChapter *Chapter
+	for i := range response.Chapters {
+		if response.Chapters[i].ID == req.ChapterID {
+			targetChapter = &response.Chapters[i]
+			break
+		}
+	}
+
+	if targetChapter == nil {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Chapter not found",
+		})
+		return
+	}
+
+	// Create new lesson
+	newLesson := Lesson{
+		Index:         len(targetChapter.Lessons),
+		Title:         req.Title,
+		Prompt:        req.Prompt,
+		Type:          req.Type,
+		CharacterName: req.CharacterName,
+		Description:   req.Description,
+		IsLocked:      req.IsLocked,
+		Turns:         req.Turns,
+		CreatedAt:     utils.GetCurrentTimestampString(),
+		UpdatedAt:     utils.GetCurrentTimestampString(),
+	}
+
+	targetChapter.Lessons = append(targetChapter.Lessons, newLesson)
+
+	// Save updated data
+	updatedData, err := json.MarshalIndent(response, "", "  ")
+	if err != nil {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Failed to serialize data: " + err.Error(),
+		})
+		return
+	}
+
+	if err := os.WriteFile("data.json", updatedData, 0644); err != nil {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Failed to save data file: " + err.Error(),
+		})
+		return
+	}
+
+	json.NewEncoder(w).Encode(LessonsResponse{
+		Success: true,
+		Message: "Lesson created successfully",
+	})
+}
+
+func (cw *ChatbotWeb) handleUpdateLesson(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	var req struct {
+		ChapterID     string `json:"chapter_id"`
+		LessonIndex   int    `json:"lesson_index"`
+		Title         string `json:"title"`
+		CharacterName string `json:"character_name"`
+		Prompt        string `json:"prompt"`
+		Description   string `json:"description"`
+		Turns         int    `json:"turns"`
+		Type          string `json:"type"`
+		IsLocked      bool   `json:"is_locked"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Invalid request",
+		})
+		return
+	}
+
+	if req.Title == "" || req.CharacterName == "" || req.Prompt == "" {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Title, character name, and prompt are required",
+		})
+		return
+	}
+
+	// Read current data
+	data, err := os.ReadFile("data.json")
+	if err != nil {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Failed to read data file: " + err.Error(),
+		})
+		return
+	}
+
+	var response LessonsResponse
+	if err := json.Unmarshal(data, &response); err != nil {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Failed to parse data file: " + err.Error(),
+		})
+		return
+	}
+
+	// Find the chapter and lesson
+	var targetChapter *Chapter
+	var targetLesson *Lesson
+	for i := range response.Chapters {
+		if response.Chapters[i].ID == req.ChapterID {
+			targetChapter = &response.Chapters[i]
+			for j := range targetChapter.Lessons {
+				if targetChapter.Lessons[j].Index == req.LessonIndex {
+					targetLesson = &targetChapter.Lessons[j]
+					break
+				}
+			}
+			break
+		}
+	}
+
+	if targetChapter == nil {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Chapter not found",
+		})
+		return
+	}
+
+	if targetLesson == nil {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Lesson not found",
+		})
+		return
+	}
+
+	// Update lesson
+	targetLesson.Title = req.Title
+	targetLesson.CharacterName = req.CharacterName
+	targetLesson.Prompt = req.Prompt
+	targetLesson.Description = req.Description
+	targetLesson.Turns = req.Turns
+	targetLesson.Type = req.Type
+	targetLesson.IsLocked = req.IsLocked
+	targetLesson.UpdatedAt = utils.GetCurrentTimestampString()
+
+	// Save updated data
+	updatedData, err := json.MarshalIndent(response, "", "  ")
+	if err != nil {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Failed to serialize data: " + err.Error(),
+		})
+		return
+	}
+
+	if err := os.WriteFile("data.json", updatedData, 0644); err != nil {
+		json.NewEncoder(w).Encode(LessonsResponse{
+			Success: false,
+			Message: "Failed to save data file: " + err.Error(),
+		})
+		return
+	}
+
+	json.NewEncoder(w).Encode(LessonsResponse{
+		Success: true,
+		Message: "Lesson updated successfully",
 	})
 }
 
@@ -1843,6 +2416,169 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
             to { transform: translateX(0); }
         }
         
+        .chapter-card {
+            background: white;
+            border-radius: 12px;
+            border: 1px solid #e0e0e0;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .chapter-header {
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chapter-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .chapter-description {
+            font-size: 14px;
+            opacity: 0.9;
+            margin: 5px 0 0 0;
+        }
+
+        .chapter-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-chapter-action {
+            padding: 8px 16px;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .btn-chapter-action:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-1px);
+        }
+
+        .lessons-list {
+            padding: 20px;
+        }
+
+        .lesson-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            background: #f9fafb;
+            transition: all 0.2s;
+        }
+
+        .lesson-item:hover {
+            background: #f0f0f0;
+            border-color: #667eea;
+        }
+
+        .lesson-info {
+            flex: 1;
+        }
+
+        .lesson-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .lesson-details {
+            font-size: 13px;
+            color: #666;
+            display: flex;
+            gap: 15px;
+        }
+
+        .lesson-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .status-completed {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        .status-locked {
+            background: #ffebee;
+            color: #c62828;
+        }
+
+        .status-available {
+            background: #e3f2fd;
+            color: #1565c0;
+        }
+
+        .lesson-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-lesson-action {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .btn-lesson-edit {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-lesson-edit:hover {
+            background: #5568d3;
+            transform: translateY(-1px);
+        }
+
+        .btn-lesson-delete {
+            background: #f44336;
+            color: white;
+        }
+
+        .btn-lesson-delete:hover {
+            background: #d32f2f;
+            transform: translateY(-1px);
+        }
+
+        .btn-lesson-add {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .btn-lesson-add:hover {
+            background: #45a049;
+            transform: translateY(-1px);
+        }
+
+
         @media (max-width: 768px) {
             .sidebar {
                 width: 280px;
@@ -1850,6 +2586,23 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
             
             .level-grid {
                 grid-template-columns: 1fr;
+            }
+
+            .chapter-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+
+            .lesson-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+
+            .lesson-details {
+                flex-direction: column;
+                gap: 5px;
             }
         }
     </style>
@@ -1912,6 +2665,7 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
                 <div class="nav-tabs">
                     <button id="conversationTab" class="nav-tab active" onclick="switchTab('conversation')">💬 Conversation</button>
                     <button id="personalizeTab" class="nav-tab" onclick="switchTab('personalize')">✨ Personalize</button>
+                    <button id="lessonsTab" class="nav-tab" onclick="switchTab('lessons')">📚 Lessons</button>
                 </div>
             </div>
         </div>
@@ -1959,6 +2713,22 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
                 </div>
             </div>
         </div>
+        
+        <div id="lessonsContent" class="tab-content">
+            <div style="padding: 20px; height: 100%; overflow-y: auto;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2 style="margin: 0; color: #333;">📚 Lesson Management</h2>
+                    <button class="btn-primary" onclick="openNewChapterDialog()">+ Add Chapter</button>
+                </div>
+                
+                <div id="lessonsContainer" style="display: flex; flex-direction: column; gap: 20px;">
+                    <div style="text-align: center; padding: 40px; color: #666;">
+                        <div style="font-size: 48px; margin-bottom: 20px;">⏳</div>
+                        <div>Loading lessons...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
     
     <div id="promptModal" class="modal">
@@ -2003,6 +2773,105 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
     </div>
     
     <div id="notification" class="notification"></div>
+    
+    <div id="chapterModal" class="modal">
+        <div class="modal-content" style="max-width: 1000px;">
+            <div class="modal-header">
+                <div class="modal-title" id="chapterModalTitle">Add New Chapter</div>
+                <button class="btn-close" onclick="closeChapterModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="display: flex; gap: 20px;">
+                    <div style="flex: 1;">
+                        <div class="section">
+                            <div class="section-title">Chapter Title</div>
+                            <input id="chapterTitle" class="input-topic-name" placeholder="Enter chapter title" />
+                        </div>
+                        <div class="section">
+                            <div class="section-title">Description</div>
+                            <textarea id="chapterDescription" class="input-topic-name" placeholder="Enter chapter description" rows="3"></textarea>
+                        </div>
+                        <div class="section">
+                            <div class="section-title">Order</div>
+                            <input id="chapterOrder" class="input-topic-name" type="number" placeholder="Enter order number" />
+                        </div>
+                        <div class="section">
+                            <div class="section-title">Locked</div>
+                            <select id="chapterLocked" class="form-select">
+                                <option value="false">Unlocked</option>
+                                <option value="true">Locked</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div style="flex: 1;">
+                        <div class="section">
+                            <div class="section-title">Lessons in this Chapter</div>
+                            <div id="chapterLessonsList" style="max-height: 300px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 8px; padding: 10px;">
+                                <div style="text-align: center; color: #666; padding: 20px;">
+                                    No lessons yet
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeChapterModal()">Cancel</button>
+                <button id="chapterDeleteBtn" class="btn-outline" onclick="deleteChapterFromModal()" style="display: none; background: #f44336; color: white; border-color: #f44336;">Delete Chapter</button>
+                <button class="btn-primary" onclick="saveChapter()">Save Chapter</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="lessonModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title" id="lessonModalTitle">Add New Lesson</div>
+                <button class="btn-close" onclick="closeLessonModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="section">
+                    <div class="section-title">Lesson Title</div>
+                    <input id="lessonTitle" class="input-topic-name" placeholder="Enter lesson title" />
+                </div>
+                <div class="section">
+                    <div class="section-title">Character Name</div>
+                    <input id="lessonCharacter" class="input-topic-name" placeholder="Enter character name" />
+                </div>
+                <div class="section">
+                    <div class="section-title">Prompt</div>
+                    <input id="lessonPrompt" class="input-topic-name" placeholder="Enter prompt name" />
+                </div>
+                <div class="section">
+                    <div class="section-title">Description</div>
+                    <textarea id="lessonDescription" class="input-topic-name" placeholder="Enter lesson description" rows="3"></textarea>
+                </div>
+                <div class="section">
+                    <div class="section-title">Turns</div>
+                    <input id="lessonTurns" class="input-topic-name" type="number" placeholder="Enter number of turns" />
+                </div>
+                <div class="section">
+                    <div class="section-title">Type</div>
+                    <select id="lessonType" class="form-select">
+                        <option value="Conversation">Conversation</option>
+                        <option value="Exercise">Exercise</option>
+                        <option value="Quiz">Quiz</option>
+                    </select>
+                </div>
+                <div class="section">
+                    <div class="section-title">Status</div>
+                    <select id="lessonStatus" class="form-select">
+                        <option value="available">Available</option>
+                        <option value="locked">Locked</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeLessonModal()">Cancel</button>
+                <button class="btn-primary" onclick="saveLesson()">Save Lesson</button>
+            </div>
+        </div>
+    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
     <script>
@@ -2013,6 +2882,9 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
         let isCreatingNew = false;
         let yamlValidationTimeout = null;
         let currentSessionID = '';
+        let currentChapterId = '';
+        let editingChapterId = '';
+        let editingLessonIndex = -1;
 
         async function init() {
             await loadTopics();
@@ -2140,6 +3012,12 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
                     scrollToBottom();
                     document.getElementById('chatInput').focus();
                 }, 0);
+            } else if (tabName === 'lessons') {
+                // Hide sidebar in lessons tab
+                const sidebar = document.querySelector('.sidebar');
+                if (sidebar) sidebar.style.display = 'none';
+                // Load lessons data
+                loadLessons();
             }
         }
 
@@ -2933,6 +3811,418 @@ func (cw *ChatbotWeb) serveChatHTML(w http.ResponseWriter, r *http.Request) {
                     audio.parentNode.removeChild(audio);
                 }
             });
+        }
+
+        async function loadLessons() {
+            try {
+                const response = await fetch('/api/lessons');
+                const data = await response.json();
+                
+                if (data.success && data.chapters) {
+                    displayLessons(data.chapters);
+                } else {
+                    document.getElementById('lessonsContainer').innerHTML = 
+                        '<div style="text-align: center; padding: 40px; color: #f44336;">' +
+                        '<div style="font-size: 48px; margin-bottom: 20px;">❌</div>' +
+                        '<div>Failed to load lessons: ' + (data.message || 'Unknown error') + '</div>' +
+                        '</div>';
+                }
+            } catch (error) {
+                console.error('Error loading lessons:', error);
+                document.getElementById('lessonsContainer').innerHTML = 
+                    '<div style="text-align: center; padding: 40px; color: #f44336;">' +
+                    '<div style="font-size: 48px; margin-bottom: 20px;">❌</div>' +
+                    '<div>Failed to load lessons</div>' +
+                    '</div>';
+            }
+        }
+
+        function displayLessons(chapters) {
+            const container = document.getElementById('lessonsContainer');
+            container.innerHTML = '';
+            
+            chapters.forEach(chapter => {
+                const chapterCard = document.createElement('div');
+                chapterCard.className = 'chapter-card';
+                chapterCard.innerHTML = 
+                    '<div class="chapter-header">' +
+                        '<div>' +
+                            '<h3 class="chapter-title">' + escapeHtml(chapter.title) + '</h3>' +
+                            '<p class="chapter-description">' + escapeHtml(chapter.description) + '</p>' +
+                        '</div>' +
+                        '<div class="chapter-actions">' +
+                            '<button class="btn-chapter-action" onclick="editChapter(\'' + chapter.id + '\')">Edit</button>' +
+                            '<button class="btn-chapter-action" onclick="addLesson(\'' + chapter.id + '\')">+ Lesson</button>' +
+                            '<button class="btn-chapter-action" onclick="deleteChapter(\'' + chapter.id + '\')">Delete</button>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="lessons-list">' +
+                        chapter.lessons.map(lesson => createLessonHTML(lesson, chapter.id)).join('') +
+                    '</div>';
+                container.appendChild(chapterCard);
+            });
+        }
+
+        function createLessonHTML(lesson, chapterId) {
+            let statusClass = 'status-available';
+            let statusText = 'Available';
+            
+            if (lesson.is_locked) {
+                statusClass = 'status-locked';
+                statusText = 'Locked';
+            }
+            
+            return 
+                '<div class="lesson-item">' +
+                    '<div class="lesson-info">' +
+                        '<div class="lesson-title">' + escapeHtml(lesson.title) + '</div>' +
+                        '<div class="lesson-details">' +
+                            '<span>Character: ' + escapeHtml(lesson.character_name) + '</span>' +
+                            '<span>Turns: ' + lesson.turns + '</span>' +
+                            '<span>Type: ' + escapeHtml(lesson.type) + '</span>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="lesson-status">' +
+                        '<span class="status-badge ' + statusClass + '">' + statusText + '</span>' +
+                        '<div class="lesson-actions">' +
+                            '<button class="btn-lesson-action btn-lesson-edit" onclick="editLesson(\'' + chapterId + '\', ' + lesson.index + ')">Edit</button>' +
+                            '<button class="btn-lesson-action btn-lesson-delete" onclick="deleteLesson(\'' + chapterId + '\', ' + lesson.index + ')">Delete</button>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>';
+        }
+
+        function openNewChapterDialog() {
+            editingChapterId = '';
+            document.getElementById('chapterModalTitle').textContent = 'Add New Chapter';
+            document.getElementById('chapterTitle').value = '';
+            document.getElementById('chapterDescription').value = '';
+            document.getElementById('chapterOrder').value = '';
+            document.getElementById('chapterLocked').value = 'false';
+            document.getElementById('chapterDeleteBtn').style.display = 'none';
+            document.getElementById('chapterLessonsList').innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">No lessons yet</div>';
+            document.getElementById('chapterModal').classList.add('active');
+        }
+
+        async function editChapter(chapterId) {
+            editingChapterId = chapterId;
+            document.getElementById('chapterModalTitle').textContent = 'Edit Chapter';
+            document.getElementById('chapterDeleteBtn').style.display = 'inline-block';
+            
+            try {
+                const response = await fetch('/api/lessons');
+                const data = await response.json();
+                
+                if (data.success && data.chapters) {
+                    const chapter = data.chapters.find(ch => ch.id === chapterId);
+                    if (chapter) {
+                        // Populate form fields
+                        document.getElementById('chapterTitle').value = chapter.title;
+                        document.getElementById('chapterDescription').value = chapter.description;
+                        document.getElementById('chapterOrder').value = chapter.order;
+                        document.getElementById('chapterLocked').value = chapter.is_locked.toString();
+                        
+                        // Display lessons
+                        displayChapterLessons(chapter.lessons);
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading chapter data:', error);
+                showNotification('Failed to load chapter data', true);
+            }
+            
+            document.getElementById('chapterModal').classList.add('active');
+        }
+
+        function displayChapterLessons(lessons) {
+            const container = document.getElementById('chapterLessonsList');
+            
+            if (lessons.length === 0) {
+                container.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">No lessons yet</div>';
+                return;
+            }
+            
+            container.innerHTML = lessons.map(lesson => {
+                let statusClass = 'status-available';
+                let statusText = 'Available';
+                
+                if (lesson.is_locked) {
+                    statusClass = 'status-locked';
+                    statusText = 'Locked';
+                }
+                
+                return '<div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; border: 1px solid #e0e0e0; border-radius: 6px; margin-bottom: 8px; background: #f9fafb;">' +
+                    '<div>' +
+                        '<div style="font-weight: 600; color: #333;">' + escapeHtml(lesson.title) + '</div>' +
+                        '<div style="font-size: 12px; color: #666;">' + escapeHtml(lesson.character_name) + ' • ' + lesson.turns + ' turns</div>' +
+                    '</div>' +
+                    '<div style="display: flex; align-items: center; gap: 8px;">' +
+                        '<span class="status-badge ' + statusClass + '">' + statusText + '</span>' +
+                        '<button class="btn-lesson-action btn-lesson-edit" onclick="editLessonFromChapter(\'' + editingChapterId + '\', ' + lesson.index + ')">Edit</button>' +
+                    '</div>' +
+                '</div>';
+            }).join('');
+        }
+
+        function addLesson(chapterId) {
+            currentChapterId = chapterId;
+            editingLessonIndex = -1;
+            document.getElementById('lessonModalTitle').textContent = 'Add New Lesson';
+            document.getElementById('lessonTitle').value = '';
+            document.getElementById('lessonCharacter').value = '';
+            document.getElementById('lessonPrompt').value = '';
+            document.getElementById('lessonDescription').value = '';
+            document.getElementById('lessonTurns').value = '9';
+            document.getElementById('lessonType').value = 'Conversation';
+            document.getElementById('lessonStatus').value = 'available';
+            document.getElementById('lessonModal').classList.add('active');
+        }
+
+        async function editLesson(chapterId, lessonIndex) {
+            currentChapterId = chapterId;
+            editingLessonIndex = lessonIndex;
+            document.getElementById('lessonModalTitle').textContent = 'Edit Lesson';
+            
+            try {
+                const response = await fetch('/api/lessons');
+                const data = await response.json();
+                
+                if (data.success && data.chapters) {
+                    const chapter = data.chapters.find(ch => ch.id === chapterId);
+                    if (chapter) {
+                        const lesson = chapter.lessons.find(l => l.index === lessonIndex);
+                        if (lesson) {
+                            // Populate form fields
+                            document.getElementById('lessonTitle').value = lesson.title;
+                            document.getElementById('lessonCharacter').value = lesson.character_name;
+                            document.getElementById('lessonPrompt').value = lesson.prompt;
+                            document.getElementById('lessonDescription').value = lesson.description;
+                            document.getElementById('lessonTurns').value = lesson.turns;
+                            document.getElementById('lessonType').value = lesson.type;
+                            document.getElementById('lessonStatus').value = lesson.is_locked ? 'locked' : 'available';
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading lesson data:', error);
+                showNotification('Failed to load lesson data', true);
+            }
+            
+            document.getElementById('lessonModal').classList.add('active');
+        }
+
+        function closeChapterModal() {
+            document.getElementById('chapterModal').classList.remove('active');
+        }
+
+        function closeLessonModal() {
+            document.getElementById('lessonModal').classList.remove('active');
+        }
+
+        async function saveChapter() {
+            const title = document.getElementById('chapterTitle').value.trim();
+            const description = document.getElementById('chapterDescription').value.trim();
+            const order = parseInt(document.getElementById('chapterOrder').value) || 1;
+            const isLocked = document.getElementById('chapterLocked').value === 'true';
+
+            if (!title) {
+                showNotification('Please enter a chapter title', true);
+                return;
+            }
+
+            try {
+                const isEditing = editingChapterId !== '';
+                const url = isEditing ? '/api/chapter/update' : '/api/chapter/create';
+                const body = isEditing ? {
+                    chapter_id: editingChapterId,
+                    title: title,
+                    description: description,
+                    order: order,
+                    is_locked: isLocked
+                } : {
+                    title: title,
+                    description: description,
+                    order: order,
+                    is_locked: isLocked
+                };
+
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(body)
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification(isEditing ? 'Chapter updated successfully!' : 'Chapter created successfully!');
+                    closeChapterModal();
+                    loadLessons();
+                } else {
+                    showNotification(data.message || (isEditing ? 'Failed to update chapter' : 'Failed to create chapter'), true);
+                }
+            } catch (error) {
+                console.error('Error saving chapter:', error);
+                showNotification('Failed to save chapter', true);
+            }
+        }
+
+        async function saveLesson() {
+            const title = document.getElementById('lessonTitle').value.trim();
+            const character = document.getElementById('lessonCharacter').value.trim();
+            const prompt = document.getElementById('lessonPrompt').value.trim();
+            const description = document.getElementById('lessonDescription').value.trim();
+            const turns = parseInt(document.getElementById('lessonTurns').value) || 9;
+            const type = document.getElementById('lessonType').value;
+            const status = document.getElementById('lessonStatus').value;
+
+            if (!title || !character || !prompt) {
+                showNotification('Please fill in all required fields', true);
+                return;
+            }
+
+            const isLocked = status === 'locked';
+
+            try {
+                const url = editingLessonIndex >= 0 ? '/api/lesson/update' : '/api/lesson/create';
+                const body = editingLessonIndex >= 0 ? {
+                    chapter_id: currentChapterId,
+                    lesson_index: editingLessonIndex,
+                    title: title,
+                    character_name: character,
+                    prompt: prompt,
+                    description: description,
+                    turns: turns,
+                    type: type,
+                    is_locked: isLocked
+                } : {
+                    chapter_id: currentChapterId,
+                    title: title,
+                    character_name: character,
+                    prompt: prompt,
+                    description: description,
+                    turns: turns,
+                    type: type,
+                    is_locked: isLocked
+                };
+
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(body)
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification(editingLessonIndex >= 0 ? 'Lesson updated successfully!' : 'Lesson created successfully!');
+                    closeLessonModal();
+                    loadLessons();
+                } else {
+                    showNotification(data.message || (editingLessonIndex >= 0 ? 'Failed to update lesson' : 'Failed to create lesson'), true);
+                }
+            } catch (error) {
+                console.error('Error saving lesson:', error);
+                showNotification(editingLessonIndex >= 0 ? 'Failed to update lesson' : 'Failed to create lesson', true);
+            }
+        }
+
+        async function deleteChapter(chapterId) {
+            if (!confirm('Are you sure you want to delete this chapter? This action cannot be undone.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/chapter/delete', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        chapter_id: chapterId
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification('Chapter deleted successfully!');
+                    loadLessons();
+                } else {
+                    showNotification(data.message || 'Failed to delete chapter', true);
+                }
+            } catch (error) {
+                console.error('Error deleting chapter:', error);
+                showNotification('Failed to delete chapter', true);
+            }
+        }
+
+        async function deleteChapterFromModal() {
+            if (!confirm('Are you sure you want to delete this chapter? This action cannot be undone.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/chapter/delete', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        chapter_id: editingChapterId
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    showNotification('Chapter deleted successfully!');
+                    closeChapterModal();
+                    loadLessons();
+                } else {
+                    showNotification(data.message || 'Failed to delete chapter', true);
+                }
+            } catch (error) {
+                console.error('Error deleting chapter:', error);
+                showNotification('Failed to delete chapter', true);
+            }
+        }
+
+        async function editLessonFromChapter(chapterId, lessonIndex) {
+            currentChapterId = chapterId;
+            editingLessonIndex = lessonIndex;
+            document.getElementById('lessonModalTitle').textContent = 'Edit Lesson';
+            
+            try {
+                const response = await fetch('/api/lessons');
+                const data = await response.json();
+                
+                if (data.success && data.chapters) {
+                    const chapter = data.chapters.find(ch => ch.id === chapterId);
+                    if (chapter) {
+                        const lesson = chapter.lessons.find(l => l.index === lessonIndex);
+                        if (lesson) {
+                            // Populate form fields
+                            document.getElementById('lessonTitle').value = lesson.title;
+                            document.getElementById('lessonCharacter').value = lesson.character_name;
+                            document.getElementById('lessonPrompt').value = lesson.prompt;
+                            document.getElementById('lessonDescription').value = lesson.description;
+                            document.getElementById('lessonTurns').value = lesson.turns;
+                            document.getElementById('lessonType').value = lesson.type;
+                            document.getElementById('lessonStatus').value = lesson.is_locked ? 'locked' : 'available';
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading lesson data:', error);
+                showNotification('Failed to load lesson data', true);
+            }
+            
+            document.getElementById('lessonModal').classList.add('active');
+        }
+
+        function deleteLesson(chapterId, lessonIndex) {
+            if (!confirm('Are you sure you want to delete this lesson? This action cannot be undone.')) {
+                return;
+            }
+            // TODO: Implement lesson deletion
+            showNotification('Lesson deletion - Coming soon!', false);
         }
 
         init();

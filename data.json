@@ -1,0 +1,206 @@
+{
+  "success": true,
+  "chapters": [
+    {
+      "id": "chapter_1",
+      "title": "Phần 1",
+      "description": "Làm quen và giới thiệu",
+      "lessons": [
+        {
+          "index": 0,
+          "title": "Giới thiệu về bản thân",
+          "prompt": "1_introducing_your_seft",
+          "type": "Conversation",
+          "character_name": "Elon Musk",
+          "description": "Luyện cách chào hỏi và nói tên, tuổi, giúp bạn tự tin mở đầu cuộc trò chuyện.",
+          "is_locked": false,
+          "turns": 9,
+          "created_at": "1703123456",
+          "updated_at": "1761060400"
+        },
+        {
+          "index": 1,
+          "title": "Bạn đến từ đâu?",
+          "prompt": "4_my_hometown",
+          "type": "Conversation",
+          "character_name": "Steve Jobs",
+          "description": "Học cách nói về quê hương, quốc tịch và nơi ở của bạn",
+          "is_locked": false,
+          "turns": 9,
+          "created_at": "1703123456",
+          "updated_at": "1703123456"
+        },
+        {
+          "index": 2,
+          "title": "Giới thiệu công việc",
+          "prompt": "5_my_job",
+          "type": "Conversation",
+          "character_name": "Bill Gates",
+          "description": "Thực hành nói về nghề nghiệp, vị trí làm việc và mô tả công việc hằng ngày.",
+          "is_locked": false,
+          "turns": 9,
+          "created_at": "1703123456",
+          "updated_at": "1703123456"
+        },
+        {
+          "index": 3,
+          "title": "Nói về gia đình",
+          "prompt": "3_my_family",
+          "type": "Conversation",
+          "character_name": "Mark Zuckerberg",
+          "description": "Luyện cách nói về các thành viên trong gia đình, mối quan hệ và hoạt động chung.",
+          "is_locked": false,
+          "turns": 9,
+          "created_at": "1703123456",
+          "updated_at": "1703123456"
+        },
+        {
+          "index": 4,
+          "title": "Chia sẻ về sở thích",
+          "prompt": "2_my_hobby",
+          "type": "Conversation",
+          "character_name": "Jeff Bezos",
+          "description": "Biết cách nói về những điều bạn thích làm, lý do và tần suất thực hiện.",
+          "is_locked": false,
+          "turns": 9,
+          "created_at": "1703123456",
+          "updated_at": "1703123456"
+        }
+      ],
+      "is_locked": false,
+      "order": 1,
+      "created_at": "1703123456",
+      "updated_at": "1761060562"
+    },
+    {
+      "id": "chapter_2",
+      "title": "Phần 2",
+      "description": "Cuộc sống hàng ngày",
+      "lessons": [
+        {
+          "index": 0,
+          "title": "Thói quen buổi sáng",
+          "prompt": "morning_routine",
+          "type": "Conversation",
+          "character_name": "Tim Cook",
+          "description": "Học cách nói về thói quen và hoạt động buổi sáng của bạn",
+          "is_locked": true,
+          "turns": 9,
+          "created_at": "1703123456",
+          "updated_at": "1703123456"
+        },
+        {
+          "index": 1,
+          "title": "Đi chợ mua sắm",
+          "prompt": "grocery_shopping",
+          "type": "Conversation",
+          "character_name": "Larry Page",
+          "description": "Luyện tập nói về việc mua sắm thực phẩm và đồ dùng hằng ngày",
+          "is_locked": true,
+          "turns": 9,
+          "created_at": "1703123456",
+          "updated_at": "1703123456"
+        },
+        {
+          "index": 2,
+          "title": "Nấu ăn tại nhà",
+          "prompt": "cooking_at_home",
+          "type": "Conversation",
+          "character_name": "Sergey Brin",
+          "description": "Học từ vựng về nấu ăn và chuẩn bị bữa ăn",
+          "is_locked": true,
+          "turns": 9,
+          "created_at": "1703123456",
+          "updated_at": "1703123456"
+        },
+        {
+          "index": 3,
+          "title": "Dọn dẹp nhà cửa",
+          "prompt": "house_cleaning",
+          "type": "Conversation",
+          "character_name": "Larry Ellison",
+          "description": "Nói về việc dọn dẹp và sắp xếp nhà cửa",
+          "is_locked": true,
+          "turns": 9,
+          "created_at": "1703123456",
+          "updated_at": "1703123456"
+        }
+      ],
+      "is_locked": true,
+      "order": 2,
+      "created_at": "1703123456",
+      "updated_at": "1761060583"
+    },
+    {
+      "id": "chapter_3",
+      "title": "Phần 3",
+      "description": "Sở thích và thói quen",
+      "lessons": [
+        {
+          "index": 0,
+          "title": "Nói về sở thích",
+          "prompt": "hobbies_interests",
+          "type": "Conversation",
+          "character_name": "Mark Cuban",
+          "description": "Học cách nói về sở thích và những điều bạn thích làm",
+          "is_locked": true,
+          "turns": 9,
+          "created_at": "1703123456",
+          "updated_at": "1703123456"
+        },
+        {
+          "index": 1,
+          "title": "Bộ phim yêu thích",
+          "prompt": "favorite_movies",
+          "type": "Conversation",
+          "character_name": "Ryan Seacrest",
+          "description": "Luyện tập nói về phim ảnh và thể loại yêu thích",
+          "is_locked": true,
+          "turns": 9,
+          "created_at": "1703123456",
+          "updated_at": "1703123456"
+        },
+        {
+          "index": 2,
+          "title": "Bài hát tôi yêu",
+          "prompt": "favorite_songs",
+          "type": "Conversation",
+          "character_name": "Snoop Dogg",
+          "description": "Học cách nói về âm nhạc và bài hát yêu thích",
+          "is_locked": true,
+          "turns": 9,
+          "created_at": "1703123456",
+          "updated_at": "1703123456"
+        },
+        {
+          "index": 3,
+          "title": "Món ăn yêu thích",
+          "prompt": "favorite_foods",
+          "type": "Conversation",
+          "character_name": "Drew Brees",
+          "description": "Nói về món ăn và ẩm thực yêu thích của bạn",
+          "is_locked": true,
+          "turns": 9,
+          "created_at": "1703123456",
+          "updated_at": "1703123456"
+        },
+        {
+          "index": 4,
+          "title": "Thể thao yêu thích",
+          "prompt": "favorite_sports",
+          "type": "Conversation",
+          "character_name": "Dwyane Wade",
+          "description": "Thảo luận về các môn thể thao và đội bóng yêu thích",
+          "is_locked": true,
+          "turns": 9,
+          "created_at": "1703123456",
+          "updated_at": "1703123456"
+        }
+      ],
+      "is_locked": true,
+      "order": 3,
+      "created_at": "1703123456",
+      "updated_at": "1761060633"
+    }
+  ]
+}
